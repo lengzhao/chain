@@ -1,0 +1,12 @@
+---
+description: 基本要求
+globs: 实现一个高性能的区块链
+alwaysApply: false
+---
+
+1. 先确认需求，不确定的需要及时询问
+2. 除了Readme，其他文档都放到docs里
+3. 所有计划，应该放到todo.md里；需要及时更新todo.md里的状态
+4. 项目文件夹不需要pkg、src
+5. 主入口默认放到cmd里对应的文件夹下
+6. 文档里面尽量不放代码
