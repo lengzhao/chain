@@ -33,28 +33,28 @@ func New(cfg *config.Config) (*Chain, error) {
 	storage, err := storage.New(cfg.Storage)
 	if err != nil {
 		cancel()
-		return nil, fmt.Errorf("创建存储失败: %w", err)
+		return nil, fmt.Errorf("failed to create storage: %w", err)
 	}
 
 	// 创建执行引擎
 	execution, err := execution.New(cfg.Execution, storage)
 	if err != nil {
 		cancel()
-		return nil, fmt.Errorf("创建执行引擎失败: %w", err)
+		return nil, fmt.Errorf("failed to create execution engine: %w", err)
 	}
 
 	// 创建共识引擎
 	consensus, err := consensus.New(cfg.Consensus, execution, storage)
 	if err != nil {
 		cancel()
-		return nil, fmt.Errorf("创建共识引擎失败: %w", err)
+		return nil, fmt.Errorf("failed to create consensus engine: %w", err)
 	}
 
 	// 创建网络层
 	network, err := network.New(cfg.Network, consensus)
 	if err != nil {
 		cancel()
-		return nil, fmt.Errorf("创建网络层失败: %w", err)
+		return nil, fmt.Errorf("failed to create network layer: %w", err)
 	}
 
 	return &Chain{

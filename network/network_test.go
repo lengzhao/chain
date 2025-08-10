@@ -46,7 +46,7 @@ func createTestNetworkWithConfig(t testing.TB, port int, withTrustedPeers bool) 
 		Compression: false,
 	})
 	if err != nil {
-		t.Fatalf("创建存储失败: %v", err)
+		t.Fatalf("failed to create storage: %v", err)
 	}
 
 	// 创建执行引擎
@@ -56,7 +56,7 @@ func createTestNetworkWithConfig(t testing.TB, port int, withTrustedPeers bool) 
 		Timeout:    5000,
 	}, storage)
 	if err != nil {
-		t.Fatalf("创建执行引擎失败: %v", err)
+		t.Fatalf("failed to create execution engine: %v", err)
 	}
 
 	// 创建共识实例
@@ -67,13 +67,13 @@ func createTestNetworkWithConfig(t testing.TB, port int, withTrustedPeers bool) 
 		BatchSize: 100,
 	}, exec, storage)
 	if err != nil {
-		t.Fatalf("创建共识失败: %v", err)
+		t.Fatalf("failed to create consensus: %v", err)
 	}
 
 	// 创建网络实例
 	network, err := New(cfg, consensus)
 	if err != nil {
-		t.Fatalf("创建网络失败: %v", err)
+		t.Fatalf("failed to create network: %v", err)
 	}
 
 	// 返回清理函数
@@ -130,7 +130,7 @@ func TestNetworkCreation(t *testing.T) {
 	// 测试启动网络
 	err := network.Start()
 	if err != nil {
-		t.Fatalf("启动网络失败: %v", err)
+		t.Fatalf("failed to start network: %v", err)
 	}
 
 	// 等待一段时间确保启动完成
@@ -144,7 +144,7 @@ func TestNetworkStartStop(t *testing.T) {
 	// 测试启动
 	err := network.Start()
 	if err != nil {
-		t.Fatalf("启动网络失败: %v", err)
+		t.Fatalf("failed to start network: %v", err)
 	}
 
 	// 等待启动完成
@@ -156,7 +156,7 @@ func TestNetworkStartStop(t *testing.T) {
 	// 验证停止后状态
 	peers := network.GetPeers()
 	if len(peers) != 0 {
-		t.Errorf("停止后应该没有连接的节点，但找到了 %d 个", len(peers))
+		t.Errorf("停止后should have no connected peers but found %d 个", len(peers))
 	}
 }
 
@@ -167,19 +167,19 @@ func TestGetPeers(t *testing.T) {
 	// 启动网络
 	err := network.Start()
 	if err != nil {
-		t.Fatalf("启动网络失败: %v", err)
+		t.Fatalf("failed to start network: %v", err)
 	}
 	defer network.Stop()
 
 	// 获取节点列表
 	peers := network.GetPeers()
 	if peers == nil {
-		t.Fatal("节点列表不应该为nil")
+		t.Fatal("peer list should not be nil")
 	}
 
 	// 初始状态下应该没有连接的节点
 	if len(peers) != 0 {
-		t.Errorf("初始状态下应该没有连接的节点，但找到了 %d 个", len(peers))
+		t.Errorf("初始状态下should have no connected peers but found %d 个", len(peers))
 	}
 }
 
@@ -200,7 +200,7 @@ func TestRegisterMessageHandler(t *testing.T) {
 	// 启动网络
 	err := network.Start()
 	if err != nil {
-		t.Fatalf("启动网络失败: %v", err)
+		t.Fatalf("failed to start network: %v", err)
 	}
 	defer network.Stop()
 
@@ -218,7 +218,7 @@ func TestBroadcastMessage(t *testing.T) {
 	// 启动网络
 	err := network.Start()
 	if err != nil {
-		t.Fatalf("启动网络失败: %v", err)
+		t.Fatalf("failed to start network: %v", err)
 	}
 	defer network.Stop()
 
@@ -226,7 +226,7 @@ func TestBroadcastMessage(t *testing.T) {
 	testData := []byte("test message")
 	err = network.BroadcastMessage("test", testData)
 	if err != nil {
-		t.Fatalf("广播消息失败: %v", err)
+		t.Fatalf("failed to broadcast message: %v", err)
 	}
 
 	// 等待一段时间
@@ -240,7 +240,7 @@ func TestConnectToPeer(t *testing.T) {
 	// 启动网络
 	err := network.Start()
 	if err != nil {
-		t.Fatalf("启动网络失败: %v", err)
+		t.Fatalf("failed to start network: %v", err)
 	}
 	defer network.Stop()
 
@@ -248,7 +248,7 @@ func TestConnectToPeer(t *testing.T) {
 	invalidAddr := "/ip4/127.0.0.1/tcp/99999/p2p/invalid-peer-id"
 	err = network.ConnectToPeer(invalidAddr)
 	if err == nil {
-		t.Error("连接到无效地址应该失败")
+		t.Error("connecting to invalid address should fail")
 	}
 
 	// 测试连接到有效格式但不存在的主机
@@ -256,7 +256,7 @@ func TestConnectToPeer(t *testing.T) {
 	err = network.ConnectToPeer(validFormatAddr)
 	// 这个可能会失败，但应该不会panic
 	if err != nil {
-		t.Logf("连接到不存在的主机失败（预期）: %v", err)
+		t.Logf("connecting to non-existent host failed (expected): %v", err)
 	}
 }
 
@@ -273,30 +273,30 @@ func TestMessageSerialization(t *testing.T) {
 	// 序列化
 	serialized, err := originalMessage.Serialize()
 	if err != nil {
-		t.Fatalf("序列化消息失败: %v", err)
+		t.Fatalf("failed to serialize message: %v", err)
 	}
 
 	// 反序列化
 	deserialized, err := types.DeserializeMessage(serialized)
 	if err != nil {
-		t.Fatalf("反序列化消息失败: %v", err)
+		t.Fatalf("反failed to serialize message: %v", err)
 	}
 
 	// 验证字段
 	if deserialized.Type != originalMessage.Type {
-		t.Errorf("消息类型不匹配: 期望 %s, 得到 %s", originalMessage.Type, deserialized.Type)
+		t.Errorf("message type mismatch: 期望 %s, 得到 %s", originalMessage.Type, deserialized.Type)
 	}
 
 	if string(deserialized.Data) != string(originalMessage.Data) {
-		t.Errorf("消息数据不匹配: 期望 %s, 得到 %s", string(originalMessage.Data), string(deserialized.Data))
+		t.Errorf("message data mismatch: 期望 %s, 得到 %s", string(originalMessage.Data), string(deserialized.Data))
 	}
 
 	if deserialized.From != originalMessage.From {
-		t.Errorf("消息来源不匹配: 期望 %s, 得到 %s", originalMessage.From, deserialized.From)
+		t.Errorf("message source mismatch: 期望 %s, 得到 %s", originalMessage.From, deserialized.From)
 	}
 
 	if deserialized.To != originalMessage.To {
-		t.Errorf("消息目标不匹配: 期望 %s, 得到 %s", originalMessage.To, deserialized.To)
+		t.Errorf("message target mismatch: 期望 %s, 得到 %s", originalMessage.To, deserialized.To)
 	}
 }
 
@@ -324,7 +324,7 @@ func TestNetworkConfigValidation(t *testing.T) {
 			Compression: false,
 		})
 		if err != nil {
-			t.Fatalf("创建存储失败: %v", err)
+			t.Fatalf("failed to create storage: %v", err)
 		}
 
 		exec, err := execution.New(config.ExecutionConfig{
@@ -333,7 +333,7 @@ func TestNetworkConfigValidation(t *testing.T) {
 			Timeout:    5000,
 		}, storage)
 		if err != nil {
-			t.Fatalf("创建执行引擎失败: %v", err)
+			t.Fatalf("failed to create execution engine: %v", err)
 		}
 
 		consensus, err := consensus.New(config.ConsensusConfig{
@@ -343,13 +343,13 @@ func TestNetworkConfigValidation(t *testing.T) {
 			BatchSize: 100,
 		}, exec, storage)
 		if err != nil {
-			t.Fatalf("创建共识失败: %v", err)
+			t.Fatalf("failed to create consensus: %v", err)
 		}
 
 		// 尝试创建网络实例
 		_, err = New(cfg, consensus)
 		if err == nil {
-			t.Errorf("配置 %d 应该失败，但没有失败", i)
+			t.Errorf("配置 %d should fail but did not fail", i)
 		}
 
 		storage.Stop()
@@ -363,7 +363,7 @@ func TestNetworkConcurrency(t *testing.T) {
 	// 启动网络
 	err := network.Start()
 	if err != nil {
-		t.Fatalf("启动网络失败: %v", err)
+		t.Fatalf("failed to start network: %v", err)
 	}
 	defer network.Stop()
 
@@ -392,7 +392,7 @@ func TestNetworkConcurrency(t *testing.T) {
 			testData := []byte("concurrent test message")
 			err := network.BroadcastMessage("test", testData)
 			if err != nil {
-				t.Errorf("goroutine %d: 广播消息失败: %v", id, err)
+				t.Errorf("goroutine %d: failed to broadcast message: %v", id, err)
 			}
 		}(i)
 	}
@@ -410,7 +410,7 @@ func TestNetworkCleanup(t *testing.T) {
 	// 启动网络
 	err := network.Start()
 	if err != nil {
-		t.Fatalf("启动网络失败: %v", err)
+		t.Fatalf("failed to start network: %v", err)
 	}
 
 	// 等待一段时间
@@ -422,7 +422,7 @@ func TestNetworkCleanup(t *testing.T) {
 	// 验证清理完成
 	peers := network.GetPeers()
 	if len(peers) != 0 {
-		t.Errorf("清理后应该没有连接的节点，但找到了 %d 个", len(peers))
+		t.Errorf("清理后should have no connected peers but found %d 个", len(peers))
 	}
 }
 
@@ -441,7 +441,7 @@ func BenchmarkBroadcastMessage(b *testing.B) {
 
 	err := network.Start()
 	if err != nil {
-		b.Fatalf("启动网络失败: %v", err)
+		b.Fatalf("failed to start network: %v", err)
 	}
 
 	testData := []byte("benchmark test message")
@@ -450,7 +450,7 @@ func BenchmarkBroadcastMessage(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		err := network.BroadcastMessage("test", testData)
 		if err != nil {
-			b.Fatalf("广播消息失败: %v", err)
+			b.Fatalf("failed to broadcast message: %v", err)
 		}
 	}
 }
@@ -461,7 +461,7 @@ func BenchmarkGetPeers(b *testing.B) {
 
 	err := network.Start()
 	if err != nil {
-		b.Fatalf("启动网络失败: %v", err)
+		b.Fatalf("failed to start network: %v", err)
 	}
 
 	b.ResetTimer()
@@ -491,7 +491,7 @@ func TestNetworkErrorHandling(t *testing.T) {
 		Compression: false,
 	})
 	if err != nil {
-		t.Fatalf("创建存储失败: %v", err)
+		t.Fatalf("failed to create storage: %v", err)
 	}
 	defer storage.Stop()
 
@@ -501,7 +501,7 @@ func TestNetworkErrorHandling(t *testing.T) {
 		Timeout:    5000,
 	}, storage)
 	if err != nil {
-		t.Fatalf("创建执行引擎失败: %v", err)
+		t.Fatalf("failed to create execution engine: %v", err)
 	}
 
 	consensus, err := consensus.New(config.ConsensusConfig{
@@ -511,7 +511,7 @@ func TestNetworkErrorHandling(t *testing.T) {
 		BatchSize: 100,
 	}, exec, storage)
 	if err != nil {
-		t.Fatalf("创建共识失败: %v", err)
+		t.Fatalf("failed to create consensus: %v", err)
 	}
 
 	// 尝试创建网络实例（应该失败）
@@ -529,7 +529,7 @@ func TestMessageProcessing(t *testing.T) {
 	// 启动网络
 	err := network.Start()
 	if err != nil {
-		t.Fatalf("启动网络失败: %v", err)
+		t.Fatalf("failed to start network: %v", err)
 	}
 	defer network.Stop()
 
@@ -556,22 +556,22 @@ func TestMessageProcessing(t *testing.T) {
 	// 序列化消息
 	serialized, err := testMessage.Serialize()
 	if err != nil {
-		t.Fatalf("序列化消息失败: %v", err)
+		t.Fatalf("failed to serialize message: %v", err)
 	}
 
 	// 反序列化消息
 	deserialized, err := types.DeserializeMessage(serialized)
 	if err != nil {
-		t.Fatalf("反序列化消息失败: %v", err)
+		t.Fatalf("反failed to serialize message: %v", err)
 	}
 
 	// 验证消息内容
 	if deserialized.Type != testMessage.Type {
-		t.Errorf("消息类型不匹配: 期望 %s, 得到 %s", testMessage.Type, deserialized.Type)
+		t.Errorf("message type mismatch: 期望 %s, 得到 %s", testMessage.Type, deserialized.Type)
 	}
 
 	if string(deserialized.Data) != string(testMessage.Data) {
-		t.Errorf("消息数据不匹配: 期望 %s, 得到 %s", string(testMessage.Data), string(deserialized.Data))
+		t.Errorf("message data mismatch: 期望 %s, 得到 %s", string(testMessage.Data), string(deserialized.Data))
 	}
 }
 
@@ -583,14 +583,14 @@ func TestConnectionManagement(t *testing.T) {
 	// 启动网络
 	err := network.Start()
 	if err != nil {
-		t.Fatalf("启动网络失败: %v", err)
+		t.Fatalf("failed to start network: %v", err)
 	}
 	defer network.Stop()
 
 	// 测试连接管理
 	peers := network.GetPeers()
 	if len(peers) != 0 {
-		t.Errorf("初始状态下应该没有连接的节点，但找到了 %d 个", len(peers))
+		t.Errorf("初始状态下should have no connected peers but found %d 个", len(peers))
 	}
 
 	// 等待连接管理启动
@@ -651,7 +651,7 @@ func TestNetworkConfigBoundaries(t *testing.T) {
 				Compression: false,
 			})
 			if err != nil {
-				t.Fatalf("创建存储失败: %v", err)
+				t.Fatalf("failed to create storage: %v", err)
 			}
 			defer storage.Stop()
 
@@ -661,7 +661,7 @@ func TestNetworkConfigBoundaries(t *testing.T) {
 				Timeout:    5000,
 			}, storage)
 			if err != nil {
-				t.Fatalf("创建执行引擎失败: %v", err)
+				t.Fatalf("failed to create execution engine: %v", err)
 			}
 
 			consensus, err := consensus.New(config.ConsensusConfig{
@@ -671,7 +671,7 @@ func TestNetworkConfigBoundaries(t *testing.T) {
 				BatchSize: 100,
 			}, exec, storage)
 			if err != nil {
-				t.Fatalf("创建共识失败: %v", err)
+				t.Fatalf("failed to create consensus: %v", err)
 			}
 
 			// 尝试创建网络实例
@@ -693,7 +693,7 @@ func TestNetworkPerformance(t *testing.T) {
 	// 启动网络
 	err := network.Start()
 	if err != nil {
-		t.Fatalf("启动网络失败: %v", err)
+		t.Fatalf("failed to start network: %v", err)
 	}
 	defer network.Stop()
 
@@ -705,7 +705,7 @@ func TestNetworkPerformance(t *testing.T) {
 		testData := []byte(fmt.Sprintf("test message %d", i))
 		err := network.BroadcastMessage("test", testData)
 		if err != nil {
-			t.Fatalf("广播消息失败: %v", err)
+			t.Fatalf("failed to broadcast message: %v", err)
 		}
 	}
 
@@ -722,7 +722,7 @@ func TestNetworkStability(t *testing.T) {
 	// 启动网络
 	err := network.Start()
 	if err != nil {
-		t.Fatalf("启动网络失败: %v", err)
+		t.Fatalf("failed to start network: %v", err)
 	}
 	defer network.Stop()
 
@@ -744,7 +744,7 @@ func TestNetworkStability(t *testing.T) {
 		testData := []byte("stability test message")
 		err := network.BroadcastMessage("test", testData)
 		if err != nil {
-			t.Fatalf("广播消息失败: %v", err)
+			t.Fatalf("failed to broadcast message: %v", err)
 		}
 	}
 }
@@ -769,7 +769,7 @@ func TestTrustedPeers(t *testing.T) {
 		Compression: false,
 	})
 	if err != nil {
-		t.Fatalf("创建存储失败: %v", err)
+		t.Fatalf("failed to create storage: %v", err)
 	}
 	defer storage.Stop()
 
@@ -780,7 +780,7 @@ func TestTrustedPeers(t *testing.T) {
 		Timeout:    5000,
 	}, storage)
 	if err != nil {
-		t.Fatalf("创建执行引擎失败: %v", err)
+		t.Fatalf("failed to create execution engine: %v", err)
 	}
 
 	// 创建共识实例
@@ -791,20 +791,20 @@ func TestTrustedPeers(t *testing.T) {
 		BatchSize: 100,
 	}, exec, storage)
 	if err != nil {
-		t.Fatalf("创建共识失败: %v", err)
+		t.Fatalf("failed to create consensus: %v", err)
 	}
 
 	// 创建网络实例
 	network, err := New(cfg, consensus)
 	if err != nil {
-		t.Fatalf("创建网络失败: %v", err)
+		t.Fatalf("failed to create network: %v", err)
 	}
 	defer network.Stop()
 
 	// 启动网络
 	err = network.Start()
 	if err != nil {
-		t.Fatalf("启动网络失败: %v", err)
+		t.Fatalf("failed to start network: %v", err)
 	}
 
 	// 测试配置的可信节点数量
@@ -842,7 +842,7 @@ func TestTrustedPeerConnection(t *testing.T) {
 	// 启动网络
 	err := network.Start()
 	if err != nil {
-		t.Fatalf("启动网络失败: %v", err)
+		t.Fatalf("failed to start network: %v", err)
 	}
 
 	// 等待一段时间让连接尝试完成
@@ -890,7 +890,7 @@ func TestGossipsubFunctionality(t *testing.T) {
 	// 启动网络
 	err := network.Start()
 	if err != nil {
-		t.Fatalf("启动网络失败: %v", err)
+		t.Fatalf("failed to start network: %v", err)
 	}
 
 	// 等待网络启动
@@ -917,7 +917,7 @@ func TestGossipsubBroadcast(t *testing.T) {
 	// 启动网络
 	err := network.Start()
 	if err != nil {
-		t.Fatalf("启动网络失败: %v", err)
+		t.Fatalf("failed to start network: %v", err)
 	}
 
 	// 等待网络启动
@@ -927,7 +927,7 @@ func TestGossipsubBroadcast(t *testing.T) {
 	testData := []byte("test gossipsub message")
 	err = network.BroadcastMessage("test-topic", testData)
 	if err != nil {
-		t.Fatalf("广播消息失败: %v", err)
+		t.Fatalf("failed to broadcast message: %v", err)
 	}
 
 	t.Log("Gossipsub消息广播成功")
@@ -941,7 +941,7 @@ func TestGossipsubSubscription(t *testing.T) {
 	// 启动网络
 	err := network.Start()
 	if err != nil {
-		t.Fatalf("启动网络失败: %v", err)
+		t.Fatalf("failed to start network: %v", err)
 	}
 
 	// 等待网络启动
@@ -988,7 +988,7 @@ func TestMDNSFunctionality(t *testing.T) {
 		Compression: false,
 	})
 	if err != nil {
-		t.Fatalf("创建存储失败: %v", err)
+		t.Fatalf("failed to create storage: %v", err)
 	}
 	defer storage.Stop()
 
@@ -999,7 +999,7 @@ func TestMDNSFunctionality(t *testing.T) {
 		Timeout:    5000,
 	}, storage)
 	if err != nil {
-		t.Fatalf("创建执行引擎失败: %v", err)
+		t.Fatalf("failed to create execution engine: %v", err)
 	}
 
 	// 创建共识实例
@@ -1010,13 +1010,13 @@ func TestMDNSFunctionality(t *testing.T) {
 		BatchSize: 100,
 	}, exec, storage)
 	if err != nil {
-		t.Fatalf("创建共识失败: %v", err)
+		t.Fatalf("failed to create consensus: %v", err)
 	}
 
 	// 创建网络实例
 	network, err := New(cfg, consensus)
 	if err != nil {
-		t.Fatalf("创建网络失败: %v", err)
+		t.Fatalf("failed to create network: %v", err)
 	}
 	defer network.Stop()
 
@@ -1029,7 +1029,7 @@ func TestMDNSFunctionality(t *testing.T) {
 	// 启动网络
 	err = network.Start()
 	if err != nil {
-		t.Fatalf("启动网络失败: %v", err)
+		t.Fatalf("failed to start network: %v", err)
 	}
 
 	// 等待mDNS服务启动
@@ -1225,7 +1225,7 @@ func TestMDNSDisabled(t *testing.T) {
 	// 启动网络（现在总是启动mDNS）
 	err := network.Start()
 	if err != nil {
-		t.Fatalf("启动网络失败: %v", err)
+		t.Fatalf("failed to start network: %v", err)
 	}
 
 	// 等待一段时间
@@ -1268,7 +1268,7 @@ func TestMDNSStatus(t *testing.T) {
 	// 测试启用状态（启动后mDNS应该被启用）
 	err := network.Start()
 	if err != nil {
-		t.Fatalf("启动网络失败: %v", err)
+		t.Fatalf("failed to start network: %v", err)
 	}
 
 	// 等待mDNS服务启动
@@ -1299,7 +1299,7 @@ func BenchmarkMDNSDiscovery(b *testing.B) {
 		Compression: false,
 	})
 	if err != nil {
-		b.Fatalf("创建存储失败: %v", err)
+		b.Fatalf("failed to create storage: %v", err)
 	}
 	defer storage.Stop()
 
@@ -1309,7 +1309,7 @@ func BenchmarkMDNSDiscovery(b *testing.B) {
 		Timeout:    5000,
 	}, storage)
 	if err != nil {
-		b.Fatalf("创建执行引擎失败: %v", err)
+		b.Fatalf("failed to create execution engine: %v", err)
 	}
 
 	consensus, err := consensus.New(config.ConsensusConfig{
@@ -1319,12 +1319,12 @@ func BenchmarkMDNSDiscovery(b *testing.B) {
 		BatchSize: 100,
 	}, exec, storage)
 	if err != nil {
-		b.Fatalf("创建共识失败: %v", err)
+		b.Fatalf("failed to create consensus: %v", err)
 	}
 
 	network, err := New(cfg, consensus)
 	if err != nil {
-		b.Fatalf("创建网络失败: %v", err)
+		b.Fatalf("failed to create network: %v", err)
 	}
 	defer network.Stop()
 
@@ -1549,7 +1549,7 @@ func TestPrivateKeyFileManagement(t *testing.T) {
 		Compression: false,
 	})
 	if err != nil {
-		t.Fatalf("创建存储失败: %v", err)
+		t.Fatalf("failed to create storage: %v", err)
 	}
 	defer storage.Stop()
 
@@ -1560,7 +1560,7 @@ func TestPrivateKeyFileManagement(t *testing.T) {
 		Timeout:    5000,
 	}, storage)
 	if err != nil {
-		t.Fatalf("创建执行引擎失败: %v", err)
+		t.Fatalf("failed to create execution engine: %v", err)
 	}
 
 	// 创建共识实例
@@ -1571,7 +1571,7 @@ func TestPrivateKeyFileManagement(t *testing.T) {
 		BatchSize: 100,
 	}, exec, storage)
 	if err != nil {
-		t.Fatalf("创建共识失败: %v", err)
+		t.Fatalf("failed to create consensus: %v", err)
 	}
 
 	// 创建网络实例（应该自动生成私钥文件）
@@ -1666,7 +1666,7 @@ func TestConnectionManager(t *testing.T) {
 		Compression: false,
 	})
 	if err != nil {
-		t.Fatalf("创建存储失败: %v", err)
+		t.Fatalf("failed to create storage: %v", err)
 	}
 	defer storage.Stop()
 
@@ -1677,7 +1677,7 @@ func TestConnectionManager(t *testing.T) {
 		Timeout:    5000,
 	}, storage)
 	if err != nil {
-		t.Fatalf("创建执行引擎失败: %v", err)
+		t.Fatalf("failed to create execution engine: %v", err)
 	}
 
 	// 创建共识实例
@@ -1688,20 +1688,20 @@ func TestConnectionManager(t *testing.T) {
 		BatchSize: 100,
 	}, exec, storage)
 	if err != nil {
-		t.Fatalf("创建共识失败: %v", err)
+		t.Fatalf("failed to create consensus: %v", err)
 	}
 
 	// 创建网络实例
 	network, err := New(cfg, consensus)
 	if err != nil {
-		t.Fatalf("创建网络失败: %v", err)
+		t.Fatalf("failed to create network: %v", err)
 	}
 	defer network.Stop()
 
 	// 启动网络
 	err = network.Start()
 	if err != nil {
-		t.Fatalf("启动网络失败: %v", err)
+		t.Fatalf("failed to start network: %v", err)
 	}
 
 	// 等待网络启动

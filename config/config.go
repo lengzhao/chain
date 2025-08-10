@@ -51,12 +51,12 @@ type ExecutionConfig struct {
 func Load(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("读取配置文件失败: %w", err)
+		return nil, fmt.Errorf("failed to read config file: %w", err)
 	}
 
 	var config Config
 	if err := yaml.Unmarshal(data, &config); err != nil {
-		return nil, fmt.Errorf("解析配置文件失败: %w", err)
+		return nil, fmt.Errorf("failed to parse config file: %w", err)
 	}
 
 	return &config, nil

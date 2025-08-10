@@ -18,7 +18,7 @@ type LSMTree struct {
 func NewLSMTree(dataDir string) (*LSMTree, error) {
 	// 创建数据目录
 	if err := os.MkdirAll(dataDir, 0755); err != nil {
-		return nil, fmt.Errorf("创建数据目录失败: %w", err)
+		return nil, fmt.Errorf("failed to create data directory: %w", err)
 	}
 
 	// 创建内存表
@@ -27,7 +27,7 @@ func NewLSMTree(dataDir string) (*LSMTree, error) {
 	// 加载现有的SSTable文件
 	sstables, err := loadSSTables(dataDir)
 	if err != nil {
-		return nil, fmt.Errorf("加载SSTable失败: %w", err)
+		return nil, fmt.Errorf("failed to load SSTable: %w", err)
 	}
 
 	return &LSMTree{
@@ -79,7 +79,7 @@ func (l *LSMTree) Set(key, value []byte) error {
 	// 检查内存表是否需要刷新
 	if l.memTable.Size() > 64*1024*1024 { // 64MB
 		if err := l.flushMemTable(); err != nil {
-			return fmt.Errorf("刷新内存表失败: %w", err)
+			return fmt.Errorf("failed to flush memtable: %w", err)
 		}
 	}
 

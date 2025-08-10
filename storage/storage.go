@@ -21,7 +21,7 @@ func New(cfg config.StorageConfig) (*Storage, error) {
 	// 创建LSM-Tree存储引擎
 	db, err := NewLSMTree(cfg.DataDir)
 	if err != nil {
-		return nil, fmt.Errorf("创建LSM-Tree失败: %w", err)
+		return nil, fmt.Errorf("failed to create LSM-Tree: %w", err)
 	}
 
 	// 创建缓存层

@@ -34,7 +34,7 @@ func main() {
 		Compression: true,
 	})
 	if err != nil {
-		log.Fatalf("创建存储失败: %v", err)
+		log.Fatalf("failed to create storage: %v", err)
 	}
 	defer storage.Stop()
 
@@ -45,7 +45,7 @@ func main() {
 		Timeout:    5000,
 	}, storage)
 	if err != nil {
-		log.Fatalf("创建执行引擎失败: %v", err)
+		log.Fatalf("failed to create execution engine: %v", err)
 	}
 
 	// 创建共识实例
@@ -56,19 +56,19 @@ func main() {
 		BatchSize: 1000,
 	}, exec, storage)
 	if err != nil {
-		log.Fatalf("创建共识失败: %v", err)
+		log.Fatalf("failed to create consensus: %v", err)
 	}
 
 	// 创建网络实例
 	network, err := network.New(cfg, consensus)
 	if err != nil {
-		log.Fatalf("创建网络失败: %v", err)
+		log.Fatalf("failed to create network: %v", err)
 	}
 	defer network.Stop()
 
 	// 启动网络
 	if err := network.Start(); err != nil {
-		log.Fatalf("启动网络失败: %v", err)
+		log.Fatalf("failed to start network: %v", err)
 	}
 
 	fmt.Println("网络已启动，正在连接 bootstrap 节点...")

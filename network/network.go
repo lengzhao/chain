@@ -68,7 +68,7 @@ func New(cfg config.NetworkConfig, consensus *consensus.Consensus) (*Network, er
 	priv, err := getOrGeneratePrivateKey(cfg.PrivateKeyPath)
 	if err != nil {
 		cancel()
-		return nil, fmt.Errorf("获取私钥失败: %w", err)
+		return nil, fmt.Errorf("failed to get private key: %w", err)
 	}
 
 	// 创建连接管理器
@@ -79,7 +79,7 @@ func New(cfg config.NetworkConfig, consensus *consensus.Consensus) (*Network, er
 	)
 	if err != nil {
 		cancel()
-		return nil, fmt.Errorf("创建连接管理器失败: %w", err)
+		return nil, fmt.Errorf("failed to create connection manager: %w", err)
 	}
 
 	// 解析 bootstrap 节点
@@ -136,7 +136,7 @@ func New(cfg config.NetworkConfig, consensus *consensus.Consensus) (*Network, er
 	)
 	if err != nil {
 		cancel()
-		return nil, fmt.Errorf("创建libp2p主机失败: %w", err)
+		return nil, fmt.Errorf("failed to create libp2p host: %w", err)
 	}
 
 	network := &Network{
@@ -155,7 +155,7 @@ func New(cfg config.NetworkConfig, consensus *consensus.Consensus) (*Network, er
 	// 初始化Gossipsub
 	if err := network.initializeGossipsub(); err != nil {
 		cancel()
-		return nil, fmt.Errorf("初始化Gossipsub失败: %w", err)
+		return nil, fmt.Errorf("failed to initialize Gossipsub: %w", err)
 	}
 
 	network.host.SetStreamHandler("/chain/1.0.0/request", network.handleRequest)
@@ -171,7 +171,7 @@ func (n *Network) initializeGossipsub() error {
 	// 创建Gossipsub实例
 	pubsubInstance, err := pubsub.NewGossipSub(n.ctx, n.host)
 	if err != nil {
-		return fmt.Errorf("创建Gossipsub失败: %w", err)
+		return fmt.Errorf("failed to create Gossipsub: %w", err)
 	}
 
 	n.pubsub = pubsubInstance
@@ -302,12 +302,12 @@ func (n *Network) startMDNSDiscovery() {
 // BroadcastMessage 广播消息
 func (n *Network) BroadcastMessage(topic string, data []byte) error {
 	if n.pubsub == nil {
-		return fmt.Errorf("Gossipsub未初始化")
+		return fmt.Errorf("Gossipsub not initialized")
 	}
 
 	topicObj, err := n.getOrCreateTopic(topic)
 	if err != nil {
-		return fmt.Errorf("获取主题失败: %w", err)
+		return fmt.Errorf("failed to get topic: %w", err)
 	}
 
 	message := &types.Message{
@@ -320,11 +320,11 @@ func (n *Network) BroadcastMessage(topic string, data []byte) error {
 
 	messageData, err := message.Serialize()
 	if err != nil {
-		return fmt.Errorf("序列化消息失败: %w", err)
+		return fmt.Errorf("failed to serialize message: %w", err)
 	}
 
 	if err := topicObj.Publish(n.ctx, messageData); err != nil {
-		return fmt.Errorf("发布消息失败: %w", err)
+		return fmt.Errorf("failed to publish message: %w", err)
 	}
 
 	return nil
@@ -341,7 +341,7 @@ func (n *Network) getOrCreateTopic(topicName string) (*pubsub.Topic, error) {
 
 	topic, err := n.pubsub.Join(topicName)
 	if err != nil {
-		return nil, fmt.Errorf("加入主题失败: %w", err)
+		return nil, fmt.Errorf("failed to join topic: %w", err)
 	}
 
 	n.topics[topicName] = topic
@@ -351,7 +351,7 @@ func (n *Network) getOrCreateTopic(topicName string) (*pubsub.Topic, error) {
 // SubscribeToTopic 订阅主题
 func (n *Network) SubscribeToTopic(topicName string) error {
 	if n.pubsub == nil {
-		return fmt.Errorf("Gossipsub未初始化")
+		return fmt.Errorf("Gossipsub not initialized")
 	}
 
 	topic, err := n.getOrCreateTopic(topicName)
@@ -361,7 +361,7 @@ func (n *Network) SubscribeToTopic(topicName string) error {
 
 	subscription, err := topic.Subscribe()
 	if err != nil {
-		return fmt.Errorf("订阅主题失败: %w", err)
+		return fmt.Errorf("failed to subscribe to topic: %w", err)
 	}
 
 	go n.handleSubscription(topicName, subscription)
@@ -504,16 +504,16 @@ func (n *Network) GetPeers() []peer.ID {
 func (n *Network) ConnectToPeer(addr string) error {
 	maddr, err := multiaddr.NewMultiaddr(addr)
 	if err != nil {
-		return fmt.Errorf("解析地址失败: %w", err)
+		return fmt.Errorf("failed to parse address: %w", err)
 	}
 
 	info, err := peer.AddrInfoFromP2pAddr(maddr)
 	if err != nil {
-		return fmt.Errorf("解析节点信息失败: %w", err)
+		return fmt.Errorf("failed to parse peer info: %w", err)
 	}
 
 	if err := n.host.Connect(n.ctx, *info); err != nil {
-		return fmt.Errorf("连接节点失败: %w", err)
+		return fmt.Errorf("failed to connect to peer: %w", err)
 	}
 
 	return nil
@@ -637,12 +637,12 @@ func getOrGeneratePrivateKey(keyPath string) (crypto.PrivKey, error) {
 			slog.Info("private key file not found, generating new key", "key_path", keyPath)
 			priv, _, err := crypto.GenerateKeyPairWithReader(crypto.Ed25519, 2048, rand.Reader)
 			if err != nil {
-				return nil, fmt.Errorf("生成私钥失败: %w", err)
+				return nil, fmt.Errorf("failed to generate private key: %w", err)
 			}
 
 			// 保存私钥到文件
 			if err := SavePrivateKeyToFile(priv, keyPath); err != nil {
-				return nil, fmt.Errorf("保存私钥失败: %w", err)
+				return nil, fmt.Errorf("failed to save private key: %w", err)
 			}
 
 			slog.Info("new private key saved", "key_path", keyPath)
@@ -652,7 +652,7 @@ func getOrGeneratePrivateKey(keyPath string) (crypto.PrivKey, error) {
 		// 文件存在，尝试读取
 		priv, err := loadPrivateKeyFromFile(keyPath)
 		if err != nil {
-			return nil, fmt.Errorf("读取私钥文件失败: %w", err)
+			return nil, fmt.Errorf("failed to read private key file: %w", err)
 		}
 
 		slog.Info("private key loaded from file", "key_path", keyPath)
@@ -663,7 +663,7 @@ func getOrGeneratePrivateKey(keyPath string) (crypto.PrivKey, error) {
 	slog.Info("no private key path specified, generating temporary key")
 	priv, _, err := crypto.GenerateKeyPairWithReader(crypto.Ed25519, 2048, rand.Reader)
 	if err != nil {
-		return nil, fmt.Errorf("生成私钥失败: %w", err)
+		return nil, fmt.Errorf("failed to generate private key: %w", err)
 	}
 
 	return priv, nil
@@ -674,19 +674,19 @@ func loadPrivateKeyFromFile(path string) (crypto.PrivKey, error) {
 	// 读取私钥文件
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("读取私钥文件失败: %w", err)
+		return nil, fmt.Errorf("failed to read private key file: %w", err)
 	}
 
 	// 解析PEM格式
 	block, _ := pem.Decode(data)
 	if block == nil {
-		return nil, fmt.Errorf("无效的PEM格式私钥文件")
+		return nil, fmt.Errorf("invalid PEM format private key file")
 	}
 
 	// 解析私钥
 	priv, err := crypto.UnmarshalPrivateKey(block.Bytes)
 	if err != nil {
-		return nil, fmt.Errorf("解析私钥失败: %w", err)
+		return nil, fmt.Errorf("failed to parse private key: %w", err)
 	}
 
 	return priv, nil
@@ -697,7 +697,7 @@ func SavePrivateKeyToFile(priv crypto.PrivKey, path string) error {
 	// 序列化私钥
 	privBytes, err := crypto.MarshalPrivateKey(priv)
 	if err != nil {
-		return fmt.Errorf("序列化私钥失败: %w", err)
+		return fmt.Errorf("failed to serialize private key: %w", err)
 	}
 
 	// 创建PEM块
@@ -712,7 +712,7 @@ func SavePrivateKeyToFile(priv crypto.PrivKey, path string) error {
 	// 写入文件
 	err = os.WriteFile(path, pemData, 0600) // 只有所有者可读写
 	if err != nil {
-		return fmt.Errorf("写入私钥文件失败: %w", err)
+		return fmt.Errorf("failed to write private key file: %w", err)
 	}
 
 	return nil
