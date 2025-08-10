@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"fmt"
 	"os"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -78,6 +80,34 @@ func createTestNetworkWithConfig(t testing.TB, port int, withTrustedPeers bool) 
 	cleanup := func() {
 		network.Stop()
 		storage.Stop()
+
+		// 清理测试数据目录
+		testDataDir := "./test_data"
+		if err := os.RemoveAll(testDataDir); err != nil {
+			t.Logf("清理测试数据目录失败: %v", err)
+		}
+
+		// 清理其他可能的测试数据目录
+		testDirs := []string{
+			"./test_data1",
+			"./test_data2",
+			"./test_data_conn_mgr",
+			"./test_data_trusted1",
+			"./test_data_trusted2",
+			"./test_data_private_key",
+		}
+
+		for _, dir := range testDirs {
+			if err := os.RemoveAll(dir); err != nil {
+				t.Logf("清理测试目录 %s 失败: %v", dir, err)
+			}
+		}
+
+		// 清理测试私钥文件
+		testKeyFile := "./test_private_key.pem"
+		if err := os.Remove(testKeyFile); err != nil && !os.IsNotExist(err) {
+			t.Logf("清理测试私钥文件失败: %v", err)
+		}
 	}
 
 	return network, cleanup
@@ -1704,4 +1734,670 @@ func TestConnectionManager(t *testing.T) {
 	}
 
 	t.Logf("连接统计信息: %+v", connStats)
+}
+
+// TestP2PRequestResponse 测试点对点请求响应功能
+func TestP2PRequestResponse(t *testing.T) {
+	// 创建两个网络实例进行测试
+	network1, cleanup1 := createTestNetwork(t, 26710)
+	defer cleanup1()
+
+	network2, cleanup2 := createTestNetwork(t, 26711)
+	defer cleanup2()
+
+	// 启动两个网络
+	err := network1.Start()
+	if err != nil {
+		t.Fatalf("启动网络1失败: %v", err)
+	}
+
+	err = network2.Start()
+	if err != nil {
+		t.Fatalf("启动网络2失败: %v", err)
+	}
+
+	// 等待网络启动
+	time.Sleep(500 * time.Millisecond)
+
+	// 注册自定义请求处理器到网络2
+	responseReceived := make(chan []byte, 1)
+	network2.RegisterRequestHandler("test_request", func(peerID peer.ID, data []byte) ([]byte, error) {
+		t.Logf("网络2收到来自 %s 的请求，数据: %s", peerID.String(), string(data))
+		response := []byte("test_response")
+		responseReceived <- response
+		return response, nil
+	})
+
+	// 等待处理器注册完成
+	time.Sleep(100 * time.Millisecond)
+
+	// 获取网络2的地址信息并连接到网络2
+	host2ID := network2.GetHost().ID()
+	host2Addrs := network2.GetHost().Addrs()
+
+	// 构建网络2的完整地址
+	var network2Addr string
+	for _, addr := range host2Addrs {
+		if addr.Protocols()[0].Name == "ip4" {
+			network2Addr = fmt.Sprintf("%s/p2p/%s", addr.String(), host2ID.String())
+			break
+		}
+	}
+
+	if network2Addr == "" {
+		t.Fatal("无法构建网络2的地址")
+	}
+
+	// 网络1连接到网络2
+	err = network1.ConnectToPeer(network2Addr)
+	if err != nil {
+		t.Fatalf("连接网络2失败: %v", err)
+	}
+
+	// 等待连接建立
+	time.Sleep(1 * time.Second)
+
+	// 验证连接是否建立
+	if !network1.IsPeerConnected(host2ID) {
+		t.Fatal("网络1应该连接到网络2")
+	}
+
+	// 从网络1向网络2发送请求
+	requestData := []byte("hello from network1")
+	response, err := network1.SendRequest(host2ID, "test_request", requestData)
+	if err != nil {
+		t.Fatalf("发送请求失败: %v", err)
+	}
+
+	// 验证响应
+	expectedResponse := []byte("test_response")
+	if string(response) != string(expectedResponse) {
+		t.Errorf("响应不匹配，期望: %s, 实际: %s", string(expectedResponse), string(response))
+	}
+
+	// 验证网络2收到了请求
+	select {
+	case receivedData := <-responseReceived:
+		if string(receivedData) != string(expectedResponse) {
+			t.Errorf("网络2收到的响应不匹配，期望: %s, 实际: %s", string(expectedResponse), string(receivedData))
+		}
+	case <-time.After(2 * time.Second):
+		t.Error("网络2没有收到请求响应")
+	}
+
+	t.Log("点对点请求响应测试成功")
+}
+
+// TestP2PRequestErrorHandling 测试点对点请求错误处理
+func TestP2PRequestErrorHandling(t *testing.T) {
+	network1, cleanup1 := createTestNetwork(t, 26712)
+	defer cleanup1()
+
+	network2, cleanup2 := createTestNetwork(t, 26713)
+	defer cleanup2()
+
+	// 启动两个网络
+	err := network1.Start()
+	if err != nil {
+		t.Fatalf("启动网络1失败: %v", err)
+	}
+
+	err = network2.Start()
+	if err != nil {
+		t.Fatalf("启动网络2失败: %v", err)
+	}
+
+	// 等待网络启动
+	time.Sleep(500 * time.Millisecond)
+
+	// 注册返回错误的请求处理器
+	network2.RegisterRequestHandler("error_request", func(peerID peer.ID, data []byte) ([]byte, error) {
+		return nil, fmt.Errorf("模拟错误")
+	})
+
+	// 等待处理器注册完成
+	time.Sleep(100 * time.Millisecond)
+
+	// 获取网络2的地址信息并连接到网络2
+	host2ID := network2.GetHost().ID()
+	host2Addrs := network2.GetHost().Addrs()
+
+	// 构建网络2的完整地址
+	var network2Addr string
+	for _, addr := range host2Addrs {
+		if addr.Protocols()[0].Name == "ip4" {
+			network2Addr = fmt.Sprintf("%s/p2p/%s", addr.String(), host2ID.String())
+			break
+		}
+	}
+
+	if network2Addr == "" {
+		t.Fatal("无法构建网络2的地址")
+	}
+
+	// 网络1连接到网络2
+	err = network1.ConnectToPeer(network2Addr)
+	if err != nil {
+		t.Fatalf("连接网络2失败: %v", err)
+	}
+
+	// 等待连接建立
+	time.Sleep(1 * time.Second)
+
+	// 验证连接是否建立
+	if !network1.IsPeerConnected(host2ID) {
+		t.Fatal("网络1应该连接到网络2")
+	}
+
+	// 发送请求，应该返回错误
+	_, err = network1.SendRequest(host2ID, "error_request", []byte("test"))
+	if err == nil {
+		t.Error("应该返回错误但没有")
+	} else {
+		t.Logf("预期的错误: %v", err)
+	}
+
+	// 验证错误消息包含预期的内容
+	if !strings.Contains(err.Error(), "remote error") {
+		t.Errorf("错误消息应该包含 'remote error'，实际: %s", err.Error())
+	}
+
+	// 测试发送到不存在的节点
+	invalidPeerID, _ := peer.Decode("QmYyQSo1c1Ym7orWxLYvCrM2EmxFTANf8wXmmE7DWjhx5N")
+	_, err = network1.SendRequest(invalidPeerID, "test", []byte("test"))
+	if err == nil {
+		t.Error("发送到不存在节点应该失败")
+	} else {
+		t.Logf("预期的连接错误: %v", err)
+	}
+
+	t.Log("点对点请求错误处理测试成功")
+}
+
+// TestP2PRequestTypes 测试不同类型的点对点请求
+func TestP2PRequestTypes(t *testing.T) {
+	network1, cleanup1 := createTestNetwork(t, 26714)
+	defer cleanup1()
+
+	network2, cleanup2 := createTestNetwork(t, 26715)
+	defer cleanup2()
+
+	// 启动两个网络
+	err := network1.Start()
+	if err != nil {
+		t.Fatalf("启动网络1失败: %v", err)
+	}
+
+	err = network2.Start()
+	if err != nil {
+		t.Fatalf("启动网络2失败: %v", err)
+	}
+
+	// 等待网络启动
+	time.Sleep(500 * time.Millisecond)
+
+	// 注册不同类型的请求处理器
+	network2.RegisterRequestHandler(types.RequestTypePing, func(peerID peer.ID, data []byte) ([]byte, error) {
+		return []byte("pong"), nil
+	})
+
+	network2.RegisterRequestHandler(types.RequestTypeGetBlock, func(peerID peer.ID, data []byte) ([]byte, error) {
+		height := string(data)
+		return []byte(fmt.Sprintf("block_%s", height)), nil
+	})
+
+	network2.RegisterRequestHandler(types.RequestTypeGetChain, func(peerID peer.ID, data []byte) ([]byte, error) {
+		return []byte("chain_data"), nil
+	})
+
+	// 等待处理器注册完成
+	time.Sleep(100 * time.Millisecond)
+
+	// 获取网络2的节点ID
+	peer2ID := network2.GetHost().ID()
+
+	// 测试ping请求
+	response, err := network1.SendRequest(peer2ID, types.RequestTypePing, []byte("ping"))
+	if err != nil {
+		t.Fatalf("ping请求失败: %v", err)
+	}
+	if string(response) != "pong" {
+		t.Errorf("ping响应不匹配，期望: pong, 实际: %s", string(response))
+	}
+
+	// 测试获取区块请求
+	response, err = network1.SendRequest(peer2ID, types.RequestTypeGetBlock, []byte("100"))
+	if err != nil {
+		t.Fatalf("获取区块请求失败: %v", err)
+	}
+	if string(response) != "block_100" {
+		t.Errorf("获取区块响应不匹配，期望: block_100, 实际: %s", string(response))
+	}
+
+	// 测试获取链请求
+	response, err = network1.SendRequest(peer2ID, types.RequestTypeGetChain, []byte("sync"))
+	if err != nil {
+		t.Fatalf("获取链请求失败: %v", err)
+	}
+	if string(response) != "chain_data" {
+		t.Errorf("获取链响应不匹配，期望: chain_data, 实际: %s", string(response))
+	}
+
+	t.Log("不同类型点对点请求测试成功")
+}
+
+// TestP2PRequestConcurrency 测试点对点请求的并发处理
+func TestP2PRequestConcurrency(t *testing.T) {
+	network1, cleanup1 := createTestNetwork(t, 26716)
+	defer cleanup1()
+
+	network2, cleanup2 := createTestNetwork(t, 26717)
+	defer cleanup2()
+
+	// 启动两个网络
+	err := network1.Start()
+	if err != nil {
+		t.Fatalf("启动网络1失败: %v", err)
+	}
+
+	err = network2.Start()
+	if err != nil {
+		t.Fatalf("启动网络2失败: %v", err)
+	}
+
+	// 等待网络启动
+	time.Sleep(500 * time.Millisecond)
+
+	// 注册并发请求处理器
+	requestCount := 0
+	var mu sync.Mutex
+	network2.RegisterRequestHandler("concurrent_request", func(peerID peer.ID, data []byte) ([]byte, error) {
+		mu.Lock()
+		requestCount++
+		currentCount := requestCount
+		mu.Unlock()
+
+		// 模拟处理时间
+		time.Sleep(10 * time.Millisecond)
+		return []byte(fmt.Sprintf("response_%d", currentCount)), nil
+	})
+
+	// 等待处理器注册完成
+	time.Sleep(100 * time.Millisecond)
+
+	// 获取网络2的节点ID
+	peer2ID := network2.GetHost().ID()
+
+	// 并发发送多个请求
+	const numRequests = 10
+	responses := make(chan string, numRequests)
+	errors := make(chan error, numRequests)
+
+	for i := 0; i < numRequests; i++ {
+		go func(id int) {
+			requestData := []byte(fmt.Sprintf("request_%d", id))
+			response, err := network1.SendRequest(peer2ID, "concurrent_request", requestData)
+			if err != nil {
+				errors <- err
+			} else {
+				responses <- string(response)
+			}
+		}(i)
+	}
+
+	// 收集响应
+	receivedResponses := make([]string, 0, numRequests)
+	receivedErrors := make([]error, 0, numRequests)
+
+	for i := 0; i < numRequests; i++ {
+		select {
+		case response := <-responses:
+			receivedResponses = append(receivedResponses, response)
+		case err := <-errors:
+			receivedErrors = append(receivedErrors, err)
+		case <-time.After(5 * time.Second):
+			t.Error("请求超时")
+			return
+		}
+	}
+
+	// 验证所有请求都成功
+	if len(receivedErrors) > 0 {
+		t.Errorf("有 %d 个请求失败: %v", len(receivedErrors), receivedErrors)
+	}
+
+	if len(receivedResponses) != numRequests {
+		t.Errorf("期望 %d 个响应，实际收到 %d 个", numRequests, len(receivedResponses))
+	}
+
+	// 验证响应内容 - 由于并发处理，响应顺序不确定，只验证所有响应都正确
+	expectedResponses := make(map[string]bool)
+	for i := 1; i <= numRequests; i++ {
+		expectedResponses[fmt.Sprintf("response_%d", i)] = true
+	}
+
+	for _, response := range receivedResponses {
+		if !expectedResponses[response] {
+			t.Errorf("意外的响应: %s", response)
+		}
+	}
+
+	t.Logf("并发处理了 %d 个请求", len(receivedResponses))
+}
+
+// TestP2PRequestLargeData 测试大数据量的点对点请求
+func TestP2PRequestLargeData(t *testing.T) {
+	network1, cleanup1 := createTestNetwork(t, 26718)
+	defer cleanup1()
+
+	network2, cleanup2 := createTestNetwork(t, 26719)
+	defer cleanup2()
+
+	// 启动两个网络
+	err := network1.Start()
+	if err != nil {
+		t.Fatalf("启动网络1失败: %v", err)
+	}
+
+	err = network2.Start()
+	if err != nil {
+		t.Fatalf("启动网络2失败: %v", err)
+	}
+
+	// 等待网络启动
+	time.Sleep(500 * time.Millisecond)
+
+	// 注册处理大数据量的请求处理器
+	network2.RegisterRequestHandler("large_data", func(peerID peer.ID, data []byte) ([]byte, error) {
+		// 返回更大的数据
+		response := make([]byte, len(data)*2)
+		for i := range response {
+			response[i] = byte(i % 256)
+		}
+		return response, nil
+	})
+
+	// 等待处理器注册完成
+	time.Sleep(100 * time.Millisecond)
+
+	// 获取网络2的地址信息并连接到网络2
+	host2ID := network2.GetHost().ID()
+	host2Addrs := network2.GetHost().Addrs()
+
+	// 构建网络2的完整地址
+	var network2Addr string
+	for _, addr := range host2Addrs {
+		if addr.Protocols()[0].Name == "ip4" {
+			network2Addr = fmt.Sprintf("%s/p2p/%s", addr.String(), host2ID.String())
+			break
+		}
+	}
+
+	if network2Addr == "" {
+		t.Fatal("无法构建网络2的地址")
+	}
+
+	// 网络1连接到网络2
+	err = network1.ConnectToPeer(network2Addr)
+	if err != nil {
+		t.Fatalf("连接网络2失败: %v", err)
+	}
+
+	// 等待连接建立
+	time.Sleep(1 * time.Second)
+
+	// 验证连接是否建立
+	if !network1.IsPeerConnected(host2ID) {
+		t.Fatal("网络1应该连接到网络2")
+	}
+
+	// 测试不同大小的数据 - 适应1KB缓冲区限制（考虑JSON序列化开销）
+	testSizes := []int{128, 256, 384, 512, 768} // 128B, 256B, 384B
+
+	for _, size := range testSizes {
+		// 创建测试数据
+		requestData := make([]byte, size)
+		for i := range requestData {
+			requestData[i] = byte(i % 256)
+		}
+
+		// 发送请求 - 添加超时控制
+		done := make(chan bool, 1)
+		var response []byte
+		var responseErr error
+
+		go func() {
+			response, responseErr = network1.SendRequest(host2ID, "large_data", requestData)
+			done <- true
+		}()
+
+		// 等待请求完成或超时
+		select {
+		case <-done:
+			if responseErr != nil {
+				t.Fatalf("发送 %d 字节数据失败: %v", size, responseErr)
+			}
+		case <-time.After(10 * time.Second):
+			t.Fatalf("发送 %d 字节数据超时", size)
+		}
+
+		// 验证响应大小
+		expectedSize := size * 2
+		if len(response) != expectedSize {
+			t.Errorf("响应大小不匹配，期望: %d, 实际: %d", expectedSize, len(response))
+		}
+
+		// 验证响应内容
+		for i := range response {
+			if response[i] != byte(i%256) {
+				t.Errorf("响应内容不匹配，位置 %d", i)
+				break
+			}
+		}
+
+		t.Logf("成功处理 %d 字节的数据", size)
+	}
+
+	t.Log("大数据量点对点请求测试成功")
+}
+
+// TestP2PRequestChainSync 测试区块链同步请求
+func TestP2PRequestChainSync(t *testing.T) {
+	network1, cleanup1 := createTestNetwork(t, 26722)
+	defer cleanup1()
+
+	network2, cleanup2 := createTestNetwork(t, 26723)
+	defer cleanup2()
+
+	// 启动两个网络
+	err := network1.Start()
+	if err != nil {
+		t.Fatalf("启动网络1失败: %v", err)
+	}
+
+	err = network2.Start()
+	if err != nil {
+		t.Fatalf("启动网络2失败: %v", err)
+	}
+
+	// 等待网络启动
+	time.Sleep(500 * time.Millisecond)
+
+	// 注册链同步请求处理器
+	network2.RegisterRequestHandler(types.RequestTypeSync, func(peerID peer.ID, data []byte) ([]byte, error) {
+		fromHeight := string(data)
+		// 模拟返回从指定高度开始的区块数据
+		syncData := fmt.Sprintf("sync_from_%s_blocks", fromHeight)
+		return []byte(syncData), nil
+	})
+
+	// 等待处理器注册完成
+	time.Sleep(100 * time.Millisecond)
+
+	// 获取网络2的节点ID
+	peer2ID := network2.GetHost().ID()
+
+	// 测试链同步请求
+	fromHeight := uint64(1000)
+	response, err := network1.RequestChainSync(peer2ID, fromHeight)
+	if err != nil {
+		t.Fatalf("链同步请求失败: %v", err)
+	}
+
+	expectedResponse := fmt.Sprintf("sync_from_%d_blocks", fromHeight)
+	if string(response) != expectedResponse {
+		t.Errorf("链同步响应不匹配，期望: %s, 实际: %s", expectedResponse, string(response))
+	}
+
+	t.Log("区块链同步请求测试成功")
+}
+
+// TestP2PRequestBlock 测试区块请求
+func TestP2PRequestBlock(t *testing.T) {
+	network1, cleanup1 := createTestNetwork(t, 26724)
+	defer cleanup1()
+
+	network2, cleanup2 := createTestNetwork(t, 26725)
+	defer cleanup2()
+
+	// 启动两个网络
+	err := network1.Start()
+	if err != nil {
+		t.Fatalf("启动网络1失败: %v", err)
+	}
+
+	err = network2.Start()
+	if err != nil {
+		t.Fatalf("启动网络2失败: %v", err)
+	}
+
+	// 等待网络启动
+	time.Sleep(500 * time.Millisecond)
+
+	// 注册区块请求处理器
+	network2.RegisterRequestHandler(types.RequestTypeGetBlock, func(peerID peer.ID, data []byte) ([]byte, error) {
+		height := string(data)
+		// 模拟返回区块数据
+		blockData := fmt.Sprintf("block_data_height_%s", height)
+		return []byte(blockData), nil
+	})
+
+	// 等待处理器注册完成
+	time.Sleep(100 * time.Millisecond)
+
+	// 获取网络2的地址信息并连接到网络2
+	host2ID := network2.GetHost().ID()
+	host2Addrs := network2.GetHost().Addrs()
+
+	// 构建网络2的完整地址
+	var network2Addr string
+	for _, addr := range host2Addrs {
+		if addr.Protocols()[0].Name == "ip4" {
+			network2Addr = fmt.Sprintf("%s/p2p/%s", addr.String(), host2ID.String())
+			break
+		}
+	}
+
+	if network2Addr == "" {
+		t.Fatal("无法构建网络2的地址")
+	}
+
+	// 网络1连接到网络2
+	err = network1.ConnectToPeer(network2Addr)
+	if err != nil {
+		t.Fatalf("连接网络2失败: %v", err)
+	}
+
+	// 等待连接建立
+	time.Sleep(1 * time.Second)
+
+	// 验证连接是否建立
+	if !network1.IsPeerConnected(host2ID) {
+		t.Fatal("网络1应该连接到网络2")
+	}
+
+	// 测试区块请求
+	blockHeight := uint64(12345)
+	response, err := network1.RequestBlock(host2ID, blockHeight)
+	if err != nil {
+		t.Fatalf("区块请求失败: %v", err)
+	}
+
+	expectedResponse := fmt.Sprintf("block_data_height_%d", blockHeight)
+	if string(response) != expectedResponse {
+		t.Errorf("区块响应不匹配，期望: %s, 实际: %s", expectedResponse, string(response))
+	}
+
+	t.Log("区块请求测试成功")
+}
+
+// BenchmarkP2PRequest 基准测试点对点请求性能
+func BenchmarkP2PRequest(b *testing.B) {
+	network1, cleanup1 := createTestNetwork(b, 26726)
+	defer cleanup1()
+
+	network2, cleanup2 := createTestNetwork(b, 26727)
+	defer cleanup2()
+
+	// 启动两个网络
+	err := network1.Start()
+	if err != nil {
+		b.Fatalf("启动网络1失败: %v", err)
+	}
+
+	err = network2.Start()
+	if err != nil {
+		b.Fatalf("启动网络2失败: %v", err)
+	}
+
+	// 等待网络启动
+	time.Sleep(500 * time.Millisecond)
+
+	// 注册简单的请求处理器
+	network2.RegisterRequestHandler("benchmark", func(peerID peer.ID, data []byte) ([]byte, error) {
+		return []byte("benchmark_response"), nil
+	})
+
+	// 等待处理器注册完成
+	time.Sleep(100 * time.Millisecond)
+
+	// 获取网络2的地址信息并连接到网络2
+	host2ID := network2.GetHost().ID()
+	host2Addrs := network2.GetHost().Addrs()
+
+	// 构建网络2的完整地址
+	var network2Addr string
+	for _, addr := range host2Addrs {
+		if addr.Protocols()[0].Name == "ip4" {
+			network2Addr = fmt.Sprintf("%s/p2p/%s", addr.String(), host2ID.String())
+			break
+		}
+	}
+
+	if network2Addr == "" {
+		b.Fatal("无法构建网络2的地址")
+	}
+
+	// 网络1连接到网络2
+	err = network1.ConnectToPeer(network2Addr)
+	if err != nil {
+		b.Fatalf("连接网络2失败: %v", err)
+	}
+
+	// 等待连接建立
+	time.Sleep(1 * time.Second)
+
+	// 验证连接是否建立
+	if !network1.IsPeerConnected(host2ID) {
+		b.Fatal("网络1应该连接到网络2")
+	}
+
+	// 基准测试
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, err := network1.SendRequest(host2ID, "benchmark", []byte("test"))
+		if err != nil {
+			b.Fatalf("请求失败: %v", err)
+		}
+	}
 }

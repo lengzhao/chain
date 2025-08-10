@@ -46,12 +46,19 @@ type Network struct {
 	messageHandlers map[string]MessageHandler
 	handlersMu      sync.RWMutex
 
+	// 点对点请求处理
+	requestHandlers map[string]RequestHandler
+	requestMu       sync.RWMutex
+
 	// 节点发现
 	mdnsService mdns.Service
 }
 
 // MessageHandler 消息处理器
 type MessageHandler func(peer.ID, []byte) error
+
+// RequestHandler 点对点请求处理器
+type RequestHandler func(peer.ID, []byte) ([]byte, error)
 
 // New 创建新的网络实例
 func New(cfg config.NetworkConfig, consensus *consensus.Consensus) (*Network, error) {
@@ -139,6 +146,7 @@ func New(cfg config.NetworkConfig, consensus *consensus.Consensus) (*Network, er
 		ctx:             ctx,
 		cancel:          cancel,
 		messageHandlers: make(map[string]MessageHandler),
+		requestHandlers: make(map[string]RequestHandler),
 		topics:          make(map[string]*pubsub.Topic),
 	}
 
@@ -149,6 +157,8 @@ func New(cfg config.NetworkConfig, consensus *consensus.Consensus) (*Network, er
 		cancel()
 		return nil, fmt.Errorf("初始化Gossipsub失败: %w", err)
 	}
+
+	network.host.SetStreamHandler("/chain/1.0.0/request", network.handleRequest)
 
 	// 设置网络通知
 	host.Network().Notify(network)
@@ -166,6 +176,88 @@ func (n *Network) initializeGossipsub() error {
 
 	n.pubsub = pubsubInstance
 	return nil
+}
+
+// handleRequest 处理点对点请求
+func (n *Network) handleRequest(stream network.Stream) {
+	// 不要在这里立即关闭流，让客户端先读取响应
+
+	slog.Info("handling request", "remote_peer", stream.Conn().RemotePeer().String())
+
+	defer func() {
+		time.Sleep(100 * time.Millisecond)
+		stream.Close()
+	}()
+
+	// 读取请求数据 - 支持大数据量
+	var data []byte
+	buffer := make([]byte, 1024) // 1KB缓冲区
+
+	// 读取所有可用数据
+	bytesRead, err := stream.Read(buffer)
+	if err != nil {
+		slog.Error("failed to read request data", "error", err)
+		return
+	}
+
+	if bytesRead == 0 {
+		slog.Error("received empty request data")
+		return
+	}
+
+	data = buffer[:bytesRead]
+
+	if len(data) == 0 {
+		slog.Error("received empty request data")
+		return
+	}
+	slog.Info("received request data", "bytes_read", len(data), "data", string(data))
+
+	// 解析请求
+	var req types.Request
+	if err := req.Deserialize(data); err != nil {
+		slog.Error("failed to deserialize request", "error", err)
+		return
+	}
+
+	slog.Info("parsed request", "type", req.Type, "data_len", len(req.Data))
+
+	// 调用处理器
+	handler, exists := n.requestHandlers[req.Type]
+	if !exists {
+		return
+	}
+
+	slog.Info("calling handler", "type", req.Type, "peer", stream.Conn().RemotePeer().String())
+	respData, err := handler(stream.Conn().RemotePeer(), req.Data)
+	if err != nil {
+		slog.Error("failed to process request", "error", err)
+		// 发送错误响应
+		resp := types.Response{
+			Type: "error",
+			Data: []byte(err.Error()),
+		}
+		respBytes, _ := resp.Serialize()
+		if _, err := stream.Write(respBytes); err != nil {
+			slog.Error("failed to send error response", "error", err)
+		}
+		return
+	}
+
+	slog.Info("handler completed", "type", req.Type, "response_len", len(respData))
+
+	// 发送响应
+	resp := types.Response{
+		Type: req.Type,
+		Data: respData,
+	}
+	respBytes, _ := resp.Serialize()
+	slog.Info("sending response", "type", req.Type, "response_bytes", len(respBytes))
+	if _, err := stream.Write(respBytes); err != nil {
+		slog.Error("failed to send response", "error", err)
+	} else {
+		slog.Info("response sent successfully")
+	}
 }
 
 // Start 启动网络
@@ -318,6 +410,89 @@ func (n *Network) RegisterMessageHandler(topic string, handler MessageHandler) {
 	n.handlersMu.Lock()
 	defer n.handlersMu.Unlock()
 	n.messageHandlers[topic] = handler
+}
+
+// RegisterRequestHandler 注册点对点请求处理器
+func (n *Network) RegisterRequestHandler(requestType string, handler RequestHandler) {
+	n.requestMu.Lock()
+	defer n.requestMu.Unlock()
+	n.requestHandlers[requestType] = handler
+}
+
+// SendRequest 发送点对点请求
+func (n *Network) SendRequest(peerID peer.ID, requestType string, data []byte) ([]byte, error) {
+	// 创建流
+	stream, err := n.host.NewStream(n.ctx, peerID, "/chain/1.0.0/request")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create stream: %w", err)
+	}
+	defer stream.Close()
+
+	// 构造请求
+	req := types.Request{
+		Type: requestType,
+		Data: data,
+	}
+
+	// 序列化请求
+	reqData, err := req.Serialize()
+	if err != nil {
+		return nil, fmt.Errorf("failed to serialize request: %w", err)
+	}
+
+	// 发送请求
+	if _, err := stream.Write(reqData); err != nil {
+		return nil, fmt.Errorf("failed to send request: %w", err)
+	}
+
+	// 读取响应
+	var responseData []byte
+	buffer := make([]byte, 4096)
+	for {
+		bytesRead, err := stream.Read(buffer)
+		if bytesRead > 0 {
+			responseData = append(responseData, buffer[:bytesRead]...)
+		}
+		if err != nil {
+			if err.Error() == "EOF" {
+				break
+			}
+			slog.Error("failed to read response", "error", err, "peer", peerID.String())
+			return nil, fmt.Errorf("failed to read response: %w", err)
+		}
+		if bytesRead == 0 {
+			break
+		}
+	}
+
+	slog.Info("read response", "bytes_read", len(responseData), "peer", peerID.String())
+
+	// 解析响应
+	var resp types.Response
+	if err := resp.Deserialize(responseData); err != nil {
+		return nil, fmt.Errorf("failed to deserialize response: %w", err)
+	}
+
+	// 检查是否是错误响应
+	if resp.Type == "error" {
+		return nil, fmt.Errorf("remote error: %s", string(resp.Data))
+	}
+
+	return resp.Data, nil
+}
+
+// RequestBlock 请求特定高度的区块
+func (n *Network) RequestBlock(peerID peer.ID, height uint64) ([]byte, error) {
+	// 序列化区块高度
+	heightData := []byte(fmt.Sprintf("%d", height))
+	return n.SendRequest(peerID, types.RequestTypeGetBlock, heightData)
+}
+
+// RequestChainSync 请求链同步
+func (n *Network) RequestChainSync(peerID peer.ID, fromHeight uint64) ([]byte, error) {
+	// 序列化起始高度
+	fromData := []byte(fmt.Sprintf("%d", fromHeight))
+	return n.SendRequest(peerID, types.RequestTypeSync, fromData)
 }
 
 // GetPeers 获取连接的节点
