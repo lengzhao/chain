@@ -2,7 +2,7 @@
 
 ## 概述
 
-Network模块基于[libp2p](https://github.com/libp2p)官方库实现，提供了完整的P2P网络功能，包括**自动节点发现**、**DHT自动管理**、**Gossipsub消息传播**、**智能连接管理**等核心功能。
+Network模块基于[libp2p](https://github.com/libp2p)官方库实现，提供了完整的P2P网络功能，包括**自动节点发现**、**DHT自动管理**、**Gossipsub消息传播**、**智能连接管理**、**私钥管理**等核心功能。
 
 ## 架构设计
 
@@ -32,7 +32,6 @@ graph TB
         E1[mDNS Discovery]
         E2[Bootstrap Discovery]
         E3[DHT Discovery]
-        E4[Trusted Peers]
     end
     
     subgraph "Connection Manager"
@@ -66,20 +65,14 @@ Network模块具备强大的自动节点发现能力，无需手动管理：
    - 去中心化，无需中心化服务器
    - 支持大规模网络
 
-4. **可信节点**: 基于配置的可信节点连接
-   - 优先连接可信节点
-   - 确保网络连通性
-   - 支持动态添加和移除
-
 #### 发现优先级
 
 ```mermaid
 graph LR
-    A[启动] --> B[连接可信节点]
-    B --> C[连接Bootstrap节点]
-    C --> D[启动DHT发现]
-    D --> E[启动mDNS发现]
-    E --> F[持续发现新节点]
+    A[启动] --> B[连接Bootstrap节点]
+    B --> C[启动DHT发现]
+    C --> D[启动mDNS发现]
+    D --> E[持续发现新节点]
 ```
 
 ### 2. DHT自动管理 🎯
@@ -136,22 +129,6 @@ graph TB
    - **DHT层面**: 完全自动化，无需手动干预
    - **连接层面**: 基于DHT发现结果，自动建立和维护连接
 
-#### DHT API
-
-```go
-// 获取DHT实例（用于高级操作）
-func (n *Network) GetDHT() *dht.IpfsDHT
-
-// 查找节点
-func (n *Network) FindPeer(peerID peer.ID) (peer.AddrInfo, error)
-
-// 获取DHT统计信息
-func (n *Network) GetDHTStats() map[string]interface{}
-
-// 获取DHT路由表大小
-func (n *Network) GetDHTRoutingTable() (int, error)
-```
-
 ### 3. Gossipsub 消息传播
 
 基于Gossipsub协议的高效消息传播系统：
@@ -180,7 +157,10 @@ func (n *Network) ListTopics() []string
 func (n *Network) GetTopicPeers(topicName string) []peer.ID
 
 // 注册消息处理器
-func (n *Network) RegisterMessageHandler(topicName string, handler MessageHandler)
+func (n *Network) RegisterMessageHandler(topic string, handler MessageHandler)
+
+// 获取Gossipsub实例
+func (n *Network) GetPubsub() *pubsub.PubSub
 ```
 
 ### 4. 智能连接管理
@@ -212,13 +192,37 @@ graph LR
 
 ```go
 // 获取连接的节点
-func (n *Network) GetPeers() []*PeerInfo
+func (n *Network) GetPeers() []peer.ID
 
 // 连接到指定节点
 func (n *Network) ConnectToPeer(addr string) error
 
 // 检查节点是否已连接
 func (n *Network) IsPeerConnected(peerID peer.ID) bool
+
+// 获取连接统计信息
+func (n *Network) GetConnectionStats() map[string]interface{}
+```
+
+### 5. 私钥管理
+
+自动化的私钥生成和管理系统：
+
+#### 特性
+
+- **自动生成**: 首次启动时自动生成私钥
+- **文件持久化**: 支持私钥文件持久化存储
+- **安全存储**: 使用PEM格式安全存储私钥
+- **权限控制**: 私钥文件设置严格的权限控制
+
+#### 私钥管理API
+
+```go
+// 保存私钥到文件
+func SavePrivateKeyToFile(priv crypto.PrivKey, path string) error
+
+// 从文件加载私钥
+func loadPrivateKeyFromFile(path string) (crypto.PrivKey, error)
 ```
 
 ## 配置说明
@@ -232,35 +236,24 @@ network:
   host: "0.0.0.0"               # 监听地址
   max_peers: 50                 # 最大连接节点数
   
-  # 发现配置
-  discovery: true               # 启用节点发现
-  bootstrap: true               # 启用bootstrap发现
-  
-  # 可信节点配置
-  trusted_peers:
+  # Bootstrap节点配置
+  bootstrap_peers:
     - "/ip4/192.168.1.100/tcp/26656/p2p/QmYyQSo1c1Ym7orWxLYvCrM2EmxFTANf8wXmmE7DWjhx5N"
     - "/ip4/192.168.1.101/tcp/26656/p2p/QmYyQSo1c1Ym7orWxLYvCrM2EmxFTANf8wXmmE7DWjhx5N"
   
-  # DHT配置
-  dht:
-    mode: "server"              # DHT模式: server/client
-    protocol_prefix: "/chain"   # 协议前缀
-    auto_discovery: true        # 启用自动发现
-    routing_table_refresh: "5m" # 路由表刷新间隔
-    
-  # Gossipsub配置
-  gossipsub:
-    message_signing: true       # 启用消息签名
-    strict_verification: true   # 严格签名验证
-    max_message_size: 1048576   # 最大消息大小(1MB)
-    
-  # 连接管理配置
-  connection:
-    max_connections: 100        # 最大连接数
-    connection_timeout: 30s     # 连接超时
-    keep_alive_interval: 60s    # 保活间隔
-    health_check_interval: 5m   # 健康检查间隔
+  # 私钥配置
+  private_key_path: "./private_key.pem"  # 私钥文件路径（可选）
 ```
+
+### 配置字段说明
+
+| 字段 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `port` | int | 26656 | 网络监听端口 |
+| `host` | string | "0.0.0.0" | 网络监听地址 |
+| `max_peers` | int | 50 | 最大连接节点数 |
+| `bootstrap_peers` | []string | [] | DHT bootstrap节点列表 |
+| `private_key_path` | string | "" | 私钥文件路径，为空时自动生成 |
 
 ## 使用示例
 
@@ -276,17 +269,56 @@ import (
     
     "github.com/govm-net/chain/config"
     "github.com/govm-net/chain/network"
+    "github.com/govm-net/chain/consensus"
+    "github.com/govm-net/chain/execution"
+    "github.com/govm-net/chain/storage"
 )
 
 func main() {
-    // 加载配置
-    cfg, err := config.Load("config.yaml")
+    // 创建配置
+    cfg := config.NetworkConfig{
+        Port:     26656,
+        Host:     "0.0.0.0",
+        MaxPeers: 50,
+        BootstrapPeers: []string{
+            "/ip4/192.168.1.100/tcp/26656/p2p/QmYyQSo1c1Ym7orWxLYvCrM2EmxFTANf8wXmmE7DWjhx5N",
+        },
+    }
+    
+    // 创建存储实例
+    storage, err := storage.New(config.StorageConfig{
+        DataDir:     "./data",
+        MaxSize:     1024 * 1024 * 1024,
+        CacheSize:   1000,
+        Compression: true,
+    })
+    if err != nil {
+        log.Fatal(err)
+    }
+    
+    // 创建执行引擎
+    exec, err := execution.New(config.ExecutionConfig{
+        MaxThreads: 8,
+        BatchSize:  100,
+        Timeout:    5000,
+    }, storage)
+    if err != nil {
+        log.Fatal(err)
+    }
+    
+    // 创建共识实例
+    consensus, err := consensus.New(config.ConsensusConfig{
+        Algorithm: "pbft",
+        MaxFaulty: 1,
+        BlockTime: 1000,
+        BatchSize: 1000,
+    }, exec, storage)
     if err != nil {
         log.Fatal(err)
     }
     
     // 创建网络实例
-    net, err := network.New(cfg.Network, nil)
+    net, err := network.New(cfg, consensus)
     if err != nil {
         log.Fatal(err)
     }
@@ -319,9 +351,9 @@ func main() {
     peers := net.GetPeers()
     log.Printf("当前连接节点数: %d", len(peers))
     
-    // 查看DHT状态
-    stats := net.GetDHTStats()
-    log.Printf("DHT状态: %+v", stats)
+    // 查看连接统计信息
+    stats := net.GetConnectionStats()
+    log.Printf("连接统计: %+v", stats)
     
     // 等待
     select {}
@@ -340,34 +372,43 @@ go func() {
         select {
         case <-ticker.C:
             peers := net.GetPeers()
-            stats := net.GetDHTStats()
+            stats := net.GetConnectionStats()
             
             log.Printf("网络状态:")
             log.Printf("  - 连接节点数: %d", len(peers))
-            log.Printf("  - DHT路由表大小: %v", stats["routing_table_size"])
-            log.Printf("  - DHT模式: %v", stats["mode"])
+            log.Printf("  - 最大节点数: %v", stats["max_peers"])
+            log.Printf("  - 使用率: %.2f%%", stats["usage_percentage"])
+            log.Printf("  - Bootstrap节点数: %v", stats["bootstrap_peers"])
         }
     }
 }()
 ```
 
-### 3. 可信节点管理
+### 3. mDNS状态监控
 
 ```go
-// 检查可信节点连接状态
-trustedPeers := net.GetTrustedPeers()
-for _, peerID := range trustedPeers {
-    if net.IsPeerConnected(peerID) {
-        log.Printf("可信节点 %s 已连接", peerID.String())
-    } else {
-        log.Printf("可信节点 %s 未连接", peerID.String())
-    }
+// 检查mDNS状态
+if net.IsMDNSEnabled() {
+    log.Println("mDNS已启用")
+    
+    status := net.GetMDNSStatus()
+    log.Printf("mDNS状态: %+v", status)
+} else {
+    log.Println("mDNS未启用")
 }
+```
 
-// 动态添加可信节点
-err := net.AddTrustedPeer("/ip4/192.168.1.100/tcp/26656/p2p/QmYyQSo1c1Ym7orWxLYvCrM2EmxFTANf8wXmmE7DWjhx5N")
-if err != nil {
-    log.Printf("添加可信节点失败: %v", err)
+### 4. 主题管理
+
+```go
+// 列出所有主题
+topics := net.ListTopics()
+log.Printf("当前主题: %v", topics)
+
+// 获取主题中的节点
+for _, topic := range topics {
+    peers := net.GetTopicPeers(topic)
+    log.Printf("主题 %s 中的节点: %v", topic, peers)
 }
 ```
 
@@ -442,34 +483,43 @@ graph TD
 func (n *Network) GetNetworkStats() map[string]interface{} {
     return map[string]interface{}{
         "connected_peers": len(n.GetPeers()),
-        "dht_stats": n.GetDHTStats(),
+        "connection_stats": n.GetConnectionStats(),
         "topics": n.ListTopics(),
-        "trusted_peers": len(n.GetTrustedPeers()),
+        "mdns_status": n.GetMDNSStatus(),
     }
 }
 ```
 
-### 2. 日志记录
+### 2. 连接统计信息
 
-- **结构化日志**: 结构化的日志记录
-- **日志级别**: 可配置的日志级别
-- **日志轮转**: 自动日志轮转和清理
-- **远程日志**: 支持远程日志收集
+```go
+// 获取连接统计信息
+stats := net.GetConnectionStats()
+// 返回字段:
+// - current_peers: 当前连接节点数
+// - max_peers: 最大节点数
+// - usage_percentage: 使用率百分比
+// - bootstrap_peers: bootstrap节点数量
+```
 
-### 3. 调试工具
+### 3. mDNS状态监控
 
-- **网络拓扑**: 可视化网络拓扑图
-- **消息追踪**: 消息传输路径追踪
-- **性能分析**: 网络性能分析工具
-- **故障诊断**: 自动故障诊断和修复
+```go
+// 获取mDNS状态
+status := net.GetMDNSStatus()
+// 返回字段:
+// - enabled: 是否启用
+// - service: 服务是否创建
+// - service_name: 服务名称
+```
 
 ## 最佳实践
 
 ### 1. 配置优化
 
 - **合理设置连接数**: 根据网络规模设置合适的最大连接数
-- **启用消息签名**: 生产环境必须启用消息签名
-- **配置可信节点**: 配置足够的可信节点确保网络连通性
+- **配置Bootstrap节点**: 配置足够的bootstrap节点确保网络连通性
+- **私钥管理**: 生产环境建议指定私钥文件路径
 - **监控网络状态**: 定期监控网络状态和性能指标
 
 ### 2. 错误处理
@@ -521,7 +571,7 @@ func (n *Network) GetNetworkStats() map[string]interface{} {
 - **DHT自动管理**: 完全自动化的DHT管理
 - **Gossipsub消息传播**: 高效的消息传播系统
 - **智能连接管理**: 自动化的连接管理
-- **可信节点管理**: 支持可信节点配置
+- **私钥管理**: 自动化的私钥生成和管理
 - **监控和调试**: 完整的监控和调试功能
 
 ### v1.0.0
