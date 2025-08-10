@@ -80,13 +80,13 @@ func New(cfg config.NetworkConfig, consensus *consensus.Consensus) (*Network, er
 	for _, peerAddr := range cfg.BootstrapPeers {
 		maddr, err := multiaddr.NewMultiaddr(peerAddr)
 		if err != nil {
-			slog.Error("解析可信节点地址失败", "peer_addr", peerAddr, "error", err)
+			slog.Error("failed to parse bootstrap peer address", "peer_addr", peerAddr, "error", err)
 			continue
 		}
 
 		addrInfo, err := peer.AddrInfoFromP2pAddr(maddr)
 		if err != nil {
-			slog.Error("解析可信节点信息失败", "peer_addr", peerAddr, "error", err)
+			slog.Error("failed to parse bootstrap peer info", "peer_addr", peerAddr, "error", err)
 			continue
 		}
 
@@ -174,7 +174,7 @@ func (n *Network) Start() error {
 	n.startMDNSDiscovery()
 
 	// 2. 可信节点现在作为 DHT bootstrap 节点，DHT 会自动处理连接
-	slog.Info("网络已启动，可信节点作为 DHT bootstrap 节点")
+	slog.Info("network started, bootstrap peers configured as DHT bootstrap nodes")
 
 	return nil
 }
@@ -200,11 +200,11 @@ func (n *Network) startMDNSDiscovery() {
 
 	// 启动mDNS服务
 	if err := n.mdnsService.Start(); err != nil {
-		slog.Error("启动mDNS服务失败", "error", err)
+		slog.Error("failed to start mDNS service", "error", err)
 		return
 	}
 
-	slog.Info("mDNS服务已启动", "service_name", "chain-network")
+	slog.Info("mDNS service started", "service_name", "chain-network")
 }
 
 // BroadcastMessage 广播消息
@@ -283,11 +283,11 @@ func (n *Network) handleSubscription(topicName string, subscription *pubsub.Subs
 	for {
 		msg, err := subscription.Next(n.ctx)
 		if err != nil {
-					if err == context.Canceled {
-			return
-		}
-		slog.Error("接收消息失败", "error", err)
-		continue
+			if err == context.Canceled {
+				return
+			}
+			slog.Error("failed to receive message", "error", err)
+			continue
 		}
 
 		if msg.ReceivedFrom == n.host.ID() {
@@ -308,9 +308,9 @@ func (n *Network) processPubsubMessage(topicName string, msg *pubsub.Message) {
 		return
 	}
 
-			if err := handler(msg.ReceivedFrom, msg.Data); err != nil {
-			slog.Error("处理消息失败", "error", err)
-		}
+	if err := handler(msg.ReceivedFrom, msg.Data); err != nil {
+		slog.Error("failed to process message", "error", err)
+	}
 }
 
 // RegisterMessageHandler 注册消息处理器
@@ -425,12 +425,12 @@ func (n *Network) ListenClose(network.Network, multiaddr.Multiaddr) {}
 
 func (n *Network) Connected(net network.Network, conn network.Conn) {
 	peerID := conn.RemotePeer()
-	slog.Info("节点已连接", "peer_id", peerID.String())
+	slog.Info("peer connected", "peer_id", peerID.String())
 }
 
 func (n *Network) Disconnected(net network.Network, conn network.Conn) {
 	peerID := conn.RemotePeer()
-	slog.Info("节点已断开", "peer_id", peerID.String())
+	slog.Info("peer disconnected", "peer_id", peerID.String())
 }
 
 func (n *Network) OpenedStream(network.Network, network.Stream) {}
@@ -443,12 +443,12 @@ func (n *Network) HandlePeerFound(pi peer.AddrInfo) {
 		return
 	}
 
-	slog.Info("mDNS发现节点", "peer_id", pi.ID.String(), "addresses", pi.Addrs)
+	slog.Info("mDNS peer discovered", "peer_id", pi.ID.String(), "addresses", pi.Addrs)
 
 	if err := n.host.Connect(n.ctx, pi); err != nil {
-		slog.Error("连接发现的节点失败", "peer_id", pi.ID.String(), "error", err)
+		slog.Error("failed to connect to discovered peer", "peer_id", pi.ID.String(), "error", err)
 	} else {
-		slog.Info("成功连接到发现的节点", "peer_id", pi.ID.String())
+		slog.Info("successfully connected to discovered peer", "peer_id", pi.ID.String())
 	}
 }
 
@@ -458,20 +458,20 @@ func getOrGeneratePrivateKey(keyPath string) (crypto.PrivKey, error) {
 	if keyPath != "" {
 		// 检查文件是否存在
 		if _, err := os.Stat(keyPath); os.IsNotExist(err) {
-					// 文件不存在，生成新私钥并保存
-		slog.Info("私钥文件不存在，正在生成新私钥", "key_path", keyPath)
-		priv, _, err := crypto.GenerateKeyPairWithReader(crypto.Ed25519, 2048, rand.Reader)
-		if err != nil {
-			return nil, fmt.Errorf("生成私钥失败: %w", err)
-		}
+			// 文件不存在，生成新私钥并保存
+			slog.Info("private key file not found, generating new key", "key_path", keyPath)
+			priv, _, err := crypto.GenerateKeyPairWithReader(crypto.Ed25519, 2048, rand.Reader)
+			if err != nil {
+				return nil, fmt.Errorf("生成私钥失败: %w", err)
+			}
 
-		// 保存私钥到文件
-		if err := SavePrivateKeyToFile(priv, keyPath); err != nil {
-			return nil, fmt.Errorf("保存私钥失败: %w", err)
-		}
+			// 保存私钥到文件
+			if err := SavePrivateKeyToFile(priv, keyPath); err != nil {
+				return nil, fmt.Errorf("保存私钥失败: %w", err)
+			}
 
-		slog.Info("新私钥已保存到", "key_path", keyPath)
-		return priv, nil
+			slog.Info("new private key saved", "key_path", keyPath)
+			return priv, nil
 		}
 
 		// 文件存在，尝试读取
@@ -480,12 +480,12 @@ func getOrGeneratePrivateKey(keyPath string) (crypto.PrivKey, error) {
 			return nil, fmt.Errorf("读取私钥文件失败: %w", err)
 		}
 
-		slog.Info("已从文件加载私钥", "key_path", keyPath)
+		slog.Info("private key loaded from file", "key_path", keyPath)
 		return priv, nil
 	}
 
 	// 没有指定文件路径，生成临时私钥
-	slog.Info("未指定私钥文件路径，生成临时私钥")
+	slog.Info("no private key path specified, generating temporary key")
 	priv, _, err := crypto.GenerateKeyPairWithReader(crypto.Ed25519, 2048, rand.Reader)
 	if err != nil {
 		return nil, fmt.Errorf("生成私钥失败: %w", err)
