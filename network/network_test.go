@@ -10,9 +10,6 @@ import (
 	"time"
 
 	"github.com/govm-net/chain/config"
-	"github.com/govm-net/chain/consensus"
-	"github.com/govm-net/chain/execution"
-	"github.com/govm-net/chain/storage"
 	"github.com/govm-net/chain/types"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/multiformats/go-multiaddr"
@@ -38,40 +35,8 @@ func createTestNetworkWithConfig(t testing.TB, port int, withTrustedPeers bool) 
 		}
 	}
 
-	// 创建存储实例
-	storage, err := storage.New(config.StorageConfig{
-		DataDir:     "./test_data",
-		MaxSize:     1024 * 1024,
-		CacheSize:   100,
-		Compression: false,
-	})
-	if err != nil {
-		t.Fatalf("failed to create storage: %v", err)
-	}
-
-	// 创建执行引擎
-	exec, err := execution.New(config.ExecutionConfig{
-		MaxThreads: 4,
-		BatchSize:  100,
-		Timeout:    5000,
-	}, storage)
-	if err != nil {
-		t.Fatalf("failed to create execution engine: %v", err)
-	}
-
-	// 创建共识实例
-	consensus, err := consensus.New(config.ConsensusConfig{
-		Algorithm: "pbft",
-		MaxFaulty: 1,
-		BlockTime: 1000,
-		BatchSize: 100,
-	}, exec, storage)
-	if err != nil {
-		t.Fatalf("failed to create consensus: %v", err)
-	}
-
 	// 创建网络实例
-	network, err := New(cfg, consensus)
+	network, err := New(cfg)
 	if err != nil {
 		t.Fatalf("failed to create network: %v", err)
 	}
@@ -79,7 +44,6 @@ func createTestNetworkWithConfig(t testing.TB, port int, withTrustedPeers bool) 
 	// 返回清理函数
 	cleanup := func() {
 		network.Stop()
-		storage.Stop()
 
 		// 清理测试数据目录
 		testDataDir := "./test_data"
@@ -316,43 +280,13 @@ func TestNetworkConfigValidation(t *testing.T) {
 	}
 
 	for i, cfg := range invalidConfigs {
-		// 创建存储和执行引擎（使用默认配置）
-		storage, err := storage.New(config.StorageConfig{
-			DataDir:     "./test_data",
-			MaxSize:     1024 * 1024,
-			CacheSize:   100,
-			Compression: false,
-		})
-		if err != nil {
-			t.Fatalf("failed to create storage: %v", err)
-		}
-
-		exec, err := execution.New(config.ExecutionConfig{
-			MaxThreads: 4,
-			BatchSize:  100,
-			Timeout:    5000,
-		}, storage)
-		if err != nil {
-			t.Fatalf("failed to create execution engine: %v", err)
-		}
-
-		consensus, err := consensus.New(config.ConsensusConfig{
-			Algorithm: "pbft",
-			MaxFaulty: 1,
-			BlockTime: 1000,
-			BatchSize: 100,
-		}, exec, storage)
-		if err != nil {
-			t.Fatalf("failed to create consensus: %v", err)
-		}
 
 		// 尝试创建网络实例
-		_, err = New(cfg, consensus)
+		_, err := New(cfg)
 		if err == nil {
 			t.Errorf("配置 %d should fail but did not fail", i)
 		}
 
-		storage.Stop()
 	}
 }
 
@@ -483,39 +417,8 @@ func TestNetworkErrorHandling(t *testing.T) {
 		MaxPeers: 10,
 	}
 
-	// 创建存储和执行引擎
-	storage, err := storage.New(config.StorageConfig{
-		DataDir:     "./test_data",
-		MaxSize:     1024 * 1024,
-		CacheSize:   100,
-		Compression: false,
-	})
-	if err != nil {
-		t.Fatalf("failed to create storage: %v", err)
-	}
-	defer storage.Stop()
-
-	exec, err := execution.New(config.ExecutionConfig{
-		MaxThreads: 4,
-		BatchSize:  100,
-		Timeout:    5000,
-	}, storage)
-	if err != nil {
-		t.Fatalf("failed to create execution engine: %v", err)
-	}
-
-	consensus, err := consensus.New(config.ConsensusConfig{
-		Algorithm: "pbft",
-		MaxFaulty: 1,
-		BlockTime: 1000,
-		BatchSize: 100,
-	}, exec, storage)
-	if err != nil {
-		t.Fatalf("failed to create consensus: %v", err)
-	}
-
 	// 尝试创建网络实例（应该失败）
-	_, err = New(invalidConfig, consensus)
+	_, err := New(invalidConfig)
 	if err == nil {
 		t.Error("使用无效配置创建网络应该失败")
 	}
@@ -643,39 +546,9 @@ func TestNetworkConfigBoundaries(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			// 创建存储和执行引擎
-			storage, err := storage.New(config.StorageConfig{
-				DataDir:     "./test_data",
-				MaxSize:     1024 * 1024,
-				CacheSize:   100,
-				Compression: false,
-			})
-			if err != nil {
-				t.Fatalf("failed to create storage: %v", err)
-			}
-			defer storage.Stop()
-
-			exec, err := execution.New(config.ExecutionConfig{
-				MaxThreads: 4,
-				BatchSize:  100,
-				Timeout:    5000,
-			}, storage)
-			if err != nil {
-				t.Fatalf("failed to create execution engine: %v", err)
-			}
-
-			consensus, err := consensus.New(config.ConsensusConfig{
-				Algorithm: "pbft",
-				MaxFaulty: 1,
-				BlockTime: 1000,
-				BatchSize: 100,
-			}, exec, storage)
-			if err != nil {
-				t.Fatalf("failed to create consensus: %v", err)
-			}
 
 			// 尝试创建网络实例
-			_, err = New(tc.config, consensus)
+			_, err := New(tc.config)
 			if tc.shouldFail && err == nil {
 				t.Error("应该失败但没有失败")
 			} else if !tc.shouldFail && err != nil {
@@ -761,41 +634,8 @@ func TestTrustedPeers(t *testing.T) {
 		},
 	}
 
-	// 创建存储实例
-	storage, err := storage.New(config.StorageConfig{
-		DataDir:     "./test_data",
-		MaxSize:     1024 * 1024,
-		CacheSize:   100,
-		Compression: false,
-	})
-	if err != nil {
-		t.Fatalf("failed to create storage: %v", err)
-	}
-	defer storage.Stop()
-
-	// 创建执行引擎
-	exec, err := execution.New(config.ExecutionConfig{
-		MaxThreads: 4,
-		BatchSize:  100,
-		Timeout:    5000,
-	}, storage)
-	if err != nil {
-		t.Fatalf("failed to create execution engine: %v", err)
-	}
-
-	// 创建共识实例
-	consensus, err := consensus.New(config.ConsensusConfig{
-		Algorithm: "pbft",
-		MaxFaulty: 1,
-		BlockTime: 1000,
-		BatchSize: 100,
-	}, exec, storage)
-	if err != nil {
-		t.Fatalf("failed to create consensus: %v", err)
-	}
-
 	// 创建网络实例
-	network, err := New(cfg, consensus)
+	network, err := New(cfg)
 	if err != nil {
 		t.Fatalf("failed to create network: %v", err)
 	}
@@ -979,42 +819,8 @@ func TestMDNSFunctionality(t *testing.T) {
 		Host:     "127.0.0.1",
 		MaxPeers: 10,
 	}
-
-	// 创建存储实例
-	storage, err := storage.New(config.StorageConfig{
-		DataDir:     "./test_data",
-		MaxSize:     1024 * 1024,
-		CacheSize:   100,
-		Compression: false,
-	})
-	if err != nil {
-		t.Fatalf("failed to create storage: %v", err)
-	}
-	defer storage.Stop()
-
-	// 创建执行引擎
-	exec, err := execution.New(config.ExecutionConfig{
-		MaxThreads: 4,
-		BatchSize:  100,
-		Timeout:    5000,
-	}, storage)
-	if err != nil {
-		t.Fatalf("failed to create execution engine: %v", err)
-	}
-
-	// 创建共识实例
-	consensus, err := consensus.New(config.ConsensusConfig{
-		Algorithm: "pbft",
-		MaxFaulty: 1,
-		BlockTime: 1000,
-		BatchSize: 100,
-	}, exec, storage)
-	if err != nil {
-		t.Fatalf("failed to create consensus: %v", err)
-	}
-
 	// 创建网络实例
-	network, err := New(cfg, consensus)
+	network, err := New(cfg)
 	if err != nil {
 		t.Fatalf("failed to create network: %v", err)
 	}
@@ -1061,37 +867,7 @@ func TestMDNSDiscovery(t *testing.T) {
 		MaxPeers: 10,
 	}
 
-	storage1, err := storage.New(config.StorageConfig{
-		DataDir:     "./test_data1",
-		MaxSize:     1024 * 1024,
-		CacheSize:   100,
-		Compression: false,
-	})
-	if err != nil {
-		t.Fatalf("创建存储1失败: %v", err)
-	}
-	defer storage1.Stop()
-
-	exec1, err := execution.New(config.ExecutionConfig{
-		MaxThreads: 4,
-		BatchSize:  100,
-		Timeout:    5000,
-	}, storage1)
-	if err != nil {
-		t.Fatalf("创建执行引擎1失败: %v", err)
-	}
-
-	consensus1, err := consensus.New(config.ConsensusConfig{
-		Algorithm: "pbft",
-		MaxFaulty: 1,
-		BlockTime: 1000,
-		BatchSize: 100,
-	}, exec1, storage1)
-	if err != nil {
-		t.Fatalf("创建共识1失败: %v", err)
-	}
-
-	network1, err := New(cfg1, consensus1)
+	network1, err := New(cfg1)
 	if err != nil {
 		t.Fatalf("创建网络1失败: %v", err)
 	}
@@ -1104,37 +880,7 @@ func TestMDNSDiscovery(t *testing.T) {
 		MaxPeers: 10,
 	}
 
-	storage2, err := storage.New(config.StorageConfig{
-		DataDir:     "./test_data2",
-		MaxSize:     1024 * 1024,
-		CacheSize:   100,
-		Compression: false,
-	})
-	if err != nil {
-		t.Fatalf("创建存储2失败: %v", err)
-	}
-	defer storage2.Stop()
-
-	exec2, err := execution.New(config.ExecutionConfig{
-		MaxThreads: 4,
-		BatchSize:  100,
-		Timeout:    5000,
-	}, storage2)
-	if err != nil {
-		t.Fatalf("创建执行引擎2失败: %v", err)
-	}
-
-	consensus2, err := consensus.New(config.ConsensusConfig{
-		Algorithm: "pbft",
-		MaxFaulty: 1,
-		BlockTime: 1000,
-		BatchSize: 100,
-	}, exec2, storage2)
-	if err != nil {
-		t.Fatalf("创建共识2失败: %v", err)
-	}
-
-	network2, err := New(cfg2, consensus2)
+	network2, err := New(cfg2)
 	if err != nil {
 		t.Fatalf("创建网络2失败: %v", err)
 	}
@@ -1292,37 +1038,7 @@ func BenchmarkMDNSDiscovery(b *testing.B) {
 		MaxPeers: 10,
 	}
 
-	storage, err := storage.New(config.StorageConfig{
-		DataDir:     "./test_data_bench",
-		MaxSize:     1024 * 1024,
-		CacheSize:   100,
-		Compression: false,
-	})
-	if err != nil {
-		b.Fatalf("failed to create storage: %v", err)
-	}
-	defer storage.Stop()
-
-	exec, err := execution.New(config.ExecutionConfig{
-		MaxThreads: 4,
-		BatchSize:  100,
-		Timeout:    5000,
-	}, storage)
-	if err != nil {
-		b.Fatalf("failed to create execution engine: %v", err)
-	}
-
-	consensus, err := consensus.New(config.ConsensusConfig{
-		Algorithm: "pbft",
-		MaxFaulty: 1,
-		BlockTime: 1000,
-		BatchSize: 100,
-	}, exec, storage)
-	if err != nil {
-		b.Fatalf("failed to create consensus: %v", err)
-	}
-
-	network, err := New(cfg, consensus)
+	network, err := New(cfg)
 	if err != nil {
 		b.Fatalf("failed to create network: %v", err)
 	}
@@ -1345,37 +1061,7 @@ func TestTrustedPeerRealConnection(t *testing.T) {
 		MaxPeers: 10,
 	}
 
-	storage1, err := storage.New(config.StorageConfig{
-		DataDir:     "./test_data_trusted1",
-		MaxSize:     1024 * 1024,
-		CacheSize:   100,
-		Compression: false,
-	})
-	if err != nil {
-		t.Fatalf("创建存储1失败: %v", err)
-	}
-	defer storage1.Stop()
-
-	exec1, err := execution.New(config.ExecutionConfig{
-		MaxThreads: 4,
-		BatchSize:  100,
-		Timeout:    5000,
-	}, storage1)
-	if err != nil {
-		t.Fatalf("创建执行引擎1失败: %v", err)
-	}
-
-	consensus1, err := consensus.New(config.ConsensusConfig{
-		Algorithm: "pbft",
-		MaxFaulty: 1,
-		BlockTime: 1000,
-		BatchSize: 100,
-	}, exec1, storage1)
-	if err != nil {
-		t.Fatalf("创建共识1失败: %v", err)
-	}
-
-	network1, err := New(cfg1, consensus1)
+	network1, err := New(cfg1)
 	if err != nil {
 		t.Fatalf("创建网络1失败: %v", err)
 	}
@@ -1388,37 +1074,7 @@ func TestTrustedPeerRealConnection(t *testing.T) {
 		MaxPeers: 10,
 	}
 
-	storage2, err := storage.New(config.StorageConfig{
-		DataDir:     "./test_data_trusted2",
-		MaxSize:     1024 * 1024,
-		CacheSize:   100,
-		Compression: false,
-	})
-	if err != nil {
-		t.Fatalf("创建存储2失败: %v", err)
-	}
-	defer storage2.Stop()
-
-	exec2, err := execution.New(config.ExecutionConfig{
-		MaxThreads: 4,
-		BatchSize:  100,
-		Timeout:    5000,
-	}, storage2)
-	if err != nil {
-		t.Fatalf("创建执行引擎2失败: %v", err)
-	}
-
-	consensus2, err := consensus.New(config.ConsensusConfig{
-		Algorithm: "pbft",
-		MaxFaulty: 1,
-		BlockTime: 1000,
-		BatchSize: 100,
-	}, exec2, storage2)
-	if err != nil {
-		t.Fatalf("创建共识2失败: %v", err)
-	}
-
-	network2, err := New(cfg2, consensus2)
+	network2, err := New(cfg2)
 	if err != nil {
 		t.Fatalf("创建网络2失败: %v", err)
 	}
@@ -1541,41 +1197,8 @@ func TestPrivateKeyFileManagement(t *testing.T) {
 		PrivateKeyPath: testKeyPath,
 	}
 
-	// 创建存储实例
-	storage, err := storage.New(config.StorageConfig{
-		DataDir:     "./test_data_private_key",
-		MaxSize:     1024 * 1024,
-		CacheSize:   100,
-		Compression: false,
-	})
-	if err != nil {
-		t.Fatalf("failed to create storage: %v", err)
-	}
-	defer storage.Stop()
-
-	// 创建执行引擎
-	exec, err := execution.New(config.ExecutionConfig{
-		MaxThreads: 4,
-		BatchSize:  100,
-		Timeout:    5000,
-	}, storage)
-	if err != nil {
-		t.Fatalf("failed to create execution engine: %v", err)
-	}
-
-	// 创建共识实例
-	consensus, err := consensus.New(config.ConsensusConfig{
-		Algorithm: "pbft",
-		MaxFaulty: 1,
-		BlockTime: 1000,
-		BatchSize: 100,
-	}, exec, storage)
-	if err != nil {
-		t.Fatalf("failed to create consensus: %v", err)
-	}
-
 	// 创建网络实例（应该自动生成私钥文件）
-	network1, err := New(cfg, consensus)
+	network1, err := New(cfg)
 	if err != nil {
 		t.Fatalf("创建网络1失败: %v", err)
 	}
@@ -1613,7 +1236,7 @@ func TestPrivateKeyFileManagement(t *testing.T) {
 
 	// 创建第二个网络实例（应该加载相同的私钥文件）
 	cfg.Port = 26691
-	network2, err := New(cfg, consensus)
+	network2, err := New(cfg)
 	if err != nil {
 		t.Fatalf("创建网络2失败: %v", err)
 	}
@@ -1632,7 +1255,7 @@ func TestPrivateKeyFileManagement(t *testing.T) {
 	// 测试没有指定私钥文件路径的情况
 	cfg.PrivateKeyPath = ""
 	cfg.Port = 26692
-	network3, err := New(cfg, consensus)
+	network3, err := New(cfg)
 	if err != nil {
 		t.Fatalf("创建网络3失败: %v", err)
 	}
@@ -1658,41 +1281,8 @@ func TestConnectionManager(t *testing.T) {
 		PrivateKeyPath: "",
 	}
 
-	// 创建存储实例
-	storage, err := storage.New(config.StorageConfig{
-		DataDir:     "./test_data_conn_mgr",
-		MaxSize:     1024 * 1024,
-		CacheSize:   100,
-		Compression: false,
-	})
-	if err != nil {
-		t.Fatalf("failed to create storage: %v", err)
-	}
-	defer storage.Stop()
-
-	// 创建执行引擎
-	exec, err := execution.New(config.ExecutionConfig{
-		MaxThreads: 4,
-		BatchSize:  100,
-		Timeout:    5000,
-	}, storage)
-	if err != nil {
-		t.Fatalf("failed to create execution engine: %v", err)
-	}
-
-	// 创建共识实例
-	consensus, err := consensus.New(config.ConsensusConfig{
-		Algorithm: "pbft",
-		MaxFaulty: 1,
-		BlockTime: 1000,
-		BatchSize: 100,
-	}, exec, storage)
-	if err != nil {
-		t.Fatalf("failed to create consensus: %v", err)
-	}
-
 	// 创建网络实例
-	network, err := New(cfg, consensus)
+	network, err := New(cfg)
 	if err != nil {
 		t.Fatalf("failed to create network: %v", err)
 	}

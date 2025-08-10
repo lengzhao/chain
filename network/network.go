@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/govm-net/chain/config"
-	"github.com/govm-net/chain/consensus"
 	"github.com/govm-net/chain/types"
 	"github.com/libp2p/go-libp2p"
 	dht "github.com/libp2p/go-libp2p-kad-dht"
@@ -29,11 +28,10 @@ import (
 
 // Network 网络层 - 基于libp2p的现代化P2P网络
 type Network struct {
-	config    *config.NetworkConfig
-	consensus *consensus.Consensus
-	host      host.Host
-	ctx       context.Context
-	cancel    context.CancelFunc
+	config *config.NetworkConfig
+	host   host.Host
+	ctx    context.Context
+	cancel context.CancelFunc
 
 	// DHT自动管理（由libp2p.Routing自动处理）
 
@@ -61,7 +59,7 @@ type MessageHandler func(peer.ID, []byte) error
 type RequestHandler func(peer.ID, []byte) ([]byte, error)
 
 // New 创建新的网络实例
-func New(cfg config.NetworkConfig, consensus *consensus.Consensus) (*Network, error) {
+func New(cfg config.NetworkConfig) (*Network, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	// 获取私钥
@@ -141,7 +139,6 @@ func New(cfg config.NetworkConfig, consensus *consensus.Consensus) (*Network, er
 
 	network := &Network{
 		config:          &cfg,
-		consensus:       consensus,
 		host:            host,
 		ctx:             ctx,
 		cancel:          cancel,
@@ -302,7 +299,7 @@ func (n *Network) startMDNSDiscovery() {
 // BroadcastMessage 广播消息
 func (n *Network) BroadcastMessage(topic string, data []byte) error {
 	if n.pubsub == nil {
-		return fmt.Errorf("Gossipsub not initialized")
+		return fmt.Errorf("gossipsub not initialized")
 	}
 
 	topicObj, err := n.getOrCreateTopic(topic)
@@ -351,7 +348,7 @@ func (n *Network) getOrCreateTopic(topicName string) (*pubsub.Topic, error) {
 // SubscribeToTopic 订阅主题
 func (n *Network) SubscribeToTopic(topicName string) error {
 	if n.pubsub == nil {
-		return fmt.Errorf("Gossipsub not initialized")
+		return fmt.Errorf("gossipsub not initialized")
 	}
 
 	topic, err := n.getOrCreateTopic(topicName)
