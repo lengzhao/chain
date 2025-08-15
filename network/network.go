@@ -41,22 +41,19 @@ type Network struct {
 	topicsMu sync.RWMutex
 
 	// 消息处理
-	messageHandlers map[string]MessageHandler
+	messageHandlers map[string]types.MessageHandler
 	handlersMu      sync.RWMutex
 
 	// 点对点请求处理
-	requestHandlers map[string]RequestHandler
+	requestHandlers map[string]types.RequestHandler
 	requestMu       sync.RWMutex
 
 	// 节点发现
 	mdnsService mdns.Service
 }
 
-// MessageHandler 消息处理器
-type MessageHandler func(peer.ID, []byte) error
-
-// RequestHandler 点对点请求处理器
-type RequestHandler func(peer.ID, []byte) ([]byte, error)
+var _ types.NetworkInterface = (*Network)(nil)
+var log = slog.With("module", "network")
 
 // New 创建新的网络实例
 func New(cfg config.NetworkConfig) (*Network, error) {
@@ -66,6 +63,7 @@ func New(cfg config.NetworkConfig) (*Network, error) {
 	priv, err := getOrGeneratePrivateKey(cfg.PrivateKeyPath)
 	if err != nil {
 		cancel()
+		log.Error("failed to get private key", "error", err)
 		return nil, fmt.Errorf("failed to get private key: %w", err)
 	}
 
@@ -77,6 +75,7 @@ func New(cfg config.NetworkConfig) (*Network, error) {
 	)
 	if err != nil {
 		cancel()
+		log.Error("failed to create connection manager", "error", err)
 		return nil, fmt.Errorf("failed to create connection manager: %w", err)
 	}
 
@@ -85,13 +84,13 @@ func New(cfg config.NetworkConfig) (*Network, error) {
 	for _, peerAddr := range cfg.BootstrapPeers {
 		maddr, err := multiaddr.NewMultiaddr(peerAddr)
 		if err != nil {
-			slog.Error("failed to parse bootstrap peer address", "peer_addr", peerAddr, "error", err)
+			log.Error("failed to parse bootstrap peer address", "peer_addr", peerAddr, "error", err)
 			continue
 		}
 
 		addrInfo, err := peer.AddrInfoFromP2pAddr(maddr)
 		if err != nil {
-			slog.Error("failed to parse bootstrap peer info", "peer_addr", peerAddr, "error", err)
+			log.Error("failed to parse bootstrap peer info", "peer_addr", peerAddr, "error", err)
 			continue
 		}
 
@@ -134,6 +133,7 @@ func New(cfg config.NetworkConfig) (*Network, error) {
 	)
 	if err != nil {
 		cancel()
+		log.Error("failed to create libp2p host", "error", err)
 		return nil, fmt.Errorf("failed to create libp2p host: %w", err)
 	}
 
@@ -142,8 +142,8 @@ func New(cfg config.NetworkConfig) (*Network, error) {
 		host:            host,
 		ctx:             ctx,
 		cancel:          cancel,
-		messageHandlers: make(map[string]MessageHandler),
-		requestHandlers: make(map[string]RequestHandler),
+		messageHandlers: make(map[string]types.MessageHandler),
+		requestHandlers: make(map[string]types.RequestHandler),
 		topics:          make(map[string]*pubsub.Topic),
 	}
 
@@ -152,6 +152,7 @@ func New(cfg config.NetworkConfig) (*Network, error) {
 	// 初始化Gossipsub
 	if err := network.initializeGossipsub(); err != nil {
 		cancel()
+		log.Error("failed to initialize Gossipsub", "error", err)
 		return nil, fmt.Errorf("failed to initialize Gossipsub: %w", err)
 	}
 
@@ -159,6 +160,7 @@ func New(cfg config.NetworkConfig) (*Network, error) {
 
 	// 设置网络通知
 	host.Network().Notify(network)
+	log.Info("network initialized", "address", network.GetLocalAddresses())
 
 	return network, nil
 }
@@ -179,7 +181,7 @@ func (n *Network) initializeGossipsub() error {
 func (n *Network) handleRequest(stream network.Stream) {
 	// 不要在这里立即关闭流，让客户端先读取响应
 
-	slog.Info("handling request", "remote_peer", stream.Conn().RemotePeer().String())
+	log.Info("handling request", "remote_peer", stream.Conn().RemotePeer().String())
 
 	defer func() {
 		time.Sleep(100 * time.Millisecond)
@@ -193,31 +195,31 @@ func (n *Network) handleRequest(stream network.Stream) {
 	// 读取所有可用数据
 	bytesRead, err := stream.Read(buffer)
 	if err != nil {
-		slog.Error("failed to read request data", "error", err)
+		log.Error("failed to read request data", "error", err)
 		return
 	}
 
 	if bytesRead == 0 {
-		slog.Error("received empty request data")
+		log.Error("received empty request data")
 		return
 	}
 
 	data = buffer[:bytesRead]
 
 	if len(data) == 0 {
-		slog.Error("received empty request data")
+		log.Error("received empty request data")
 		return
 	}
-	slog.Info("received request data", "bytes_read", len(data), "data", string(data))
+	log.Info("received request data", "bytes_read", len(data), "data", string(data))
 
 	// 解析请求
 	var req types.Request
 	if err := req.Deserialize(data); err != nil {
-		slog.Error("failed to deserialize request", "error", err)
+		log.Error("failed to deserialize request", "error", err)
 		return
 	}
 
-	slog.Info("parsed request", "type", req.Type, "data_len", len(req.Data))
+	log.Info("parsed request", "type", req.Type, "data_len", len(req.Data))
 
 	// 调用处理器
 	handler, exists := n.requestHandlers[req.Type]
@@ -225,10 +227,10 @@ func (n *Network) handleRequest(stream network.Stream) {
 		return
 	}
 
-	slog.Info("calling handler", "type", req.Type, "peer", stream.Conn().RemotePeer().String())
-	respData, err := handler(stream.Conn().RemotePeer(), req.Data)
+	log.Info("calling handler", "type", req.Type, "peer", stream.Conn().RemotePeer().String())
+	respData, err := handler(stream.Conn().RemotePeer().String(), req)
 	if err != nil {
-		slog.Error("failed to process request", "error", err)
+		log.Error("failed to process request", "error", err)
 		// 发送错误响应
 		resp := types.Response{
 			Type: "error",
@@ -236,12 +238,12 @@ func (n *Network) handleRequest(stream network.Stream) {
 		}
 		respBytes, _ := resp.Serialize()
 		if _, err := stream.Write(respBytes); err != nil {
-			slog.Error("failed to send error response", "error", err)
+			log.Error("failed to send error response", "error", err)
 		}
 		return
 	}
 
-	slog.Info("handler completed", "type", req.Type, "response_len", len(respData))
+	log.Info("handler completed", "type", req.Type, "response_len", len(respData))
 
 	// 发送响应
 	resp := types.Response{
@@ -249,11 +251,11 @@ func (n *Network) handleRequest(stream network.Stream) {
 		Data: respData,
 	}
 	respBytes, _ := resp.Serialize()
-	slog.Info("sending response", "type", req.Type, "response_bytes", len(respBytes))
+	log.Info("sending response", "type", req.Type, "response_bytes", len(respBytes))
 	if _, err := stream.Write(respBytes); err != nil {
-		slog.Error("failed to send response", "error", err)
+		log.Error("failed to send response", "error", err)
 	} else {
-		slog.Info("response sent successfully")
+		log.Info("response sent successfully")
 	}
 }
 
@@ -263,7 +265,7 @@ func (n *Network) Start() error {
 	n.startMDNSDiscovery()
 
 	// 2. 可信节点现在作为 DHT bootstrap 节点，DHT 会自动处理连接
-	slog.Info("network started, bootstrap peers configured as DHT bootstrap nodes")
+	log.Info("network started, bootstrap peers configured as DHT bootstrap nodes")
 
 	return nil
 }
@@ -289,11 +291,11 @@ func (n *Network) startMDNSDiscovery() {
 
 	// 启动mDNS服务
 	if err := n.mdnsService.Start(); err != nil {
-		slog.Error("failed to start mDNS service", "error", err)
+		log.Error("failed to start mDNS service", "error", err)
 		return
 	}
 
-	slog.Info("mDNS service started", "service_name", "chain-network")
+	log.Info("mDNS service started", "service_name", "chain-network")
 }
 
 // BroadcastMessage 广播消息
@@ -345,8 +347,8 @@ func (n *Network) getOrCreateTopic(topicName string) (*pubsub.Topic, error) {
 	return topic, nil
 }
 
-// SubscribeToTopic 订阅主题
-func (n *Network) SubscribeToTopic(topicName string) error {
+// subscribeToTopicInternal 内部订阅主题方法
+func (n *Network) subscribeToTopicInternal(topicName string) error {
 	if n.pubsub == nil {
 		return fmt.Errorf("gossipsub not initialized")
 	}
@@ -375,7 +377,7 @@ func (n *Network) handleSubscription(topicName string, subscription *pubsub.Subs
 			if err == context.Canceled {
 				return
 			}
-			slog.Error("failed to receive message", "error", err)
+			log.Error("failed to receive message", "error", err)
 			continue
 		}
 
@@ -397,29 +399,54 @@ func (n *Network) processPubsubMessage(topicName string, msg *pubsub.Message) {
 		return
 	}
 
-	if err := handler(msg.ReceivedFrom, msg.Data); err != nil {
-		slog.Error("failed to process message", "error", err)
+	msgData, err := types.DeserializeMessage(msg.Data)
+	if err != nil {
+		log.Error("failed to deserialize message", "error", err)
+		return
+	}
+
+	if err := handler(msg.ReceivedFrom.String(), *msgData); err != nil {
+		log.Error("failed to process message", "error", err)
 	}
 }
 
 // RegisterMessageHandler 注册消息处理器
-func (n *Network) RegisterMessageHandler(topic string, handler MessageHandler) {
+// 自动订阅相应的主题以接收消息
+func (n *Network) RegisterMessageHandler(topic string, handler types.MessageHandler) {
 	n.handlersMu.Lock()
 	defer n.handlersMu.Unlock()
+
+	// 检查是否已经注册过该主题的处理器
+	_, exists := n.messageHandlers[topic]
 	n.messageHandlers[topic] = handler
+
+	// 如果是新注册的主题，自动订阅
+	if !exists {
+		go func() {
+			if err := n.subscribeToTopicInternal(topic); err != nil {
+				log.Error("failed to auto-subscribe to topic", "topic", topic, "error", err)
+			} else {
+				log.Info("auto-subscribed to topic", "topic", topic)
+			}
+		}()
+	}
 }
 
 // RegisterRequestHandler 注册点对点请求处理器
-func (n *Network) RegisterRequestHandler(requestType string, handler RequestHandler) {
+func (n *Network) RegisterRequestHandler(requestType string, handler types.RequestHandler) {
 	n.requestMu.Lock()
 	defer n.requestMu.Unlock()
 	n.requestHandlers[requestType] = handler
 }
 
 // SendRequest 发送点对点请求
-func (n *Network) SendRequest(peerID peer.ID, requestType string, data []byte) ([]byte, error) {
+func (n *Network) SendRequest(peerID string, requestType string, data []byte) ([]byte, error) {
+	pID, err := peer.Decode(peerID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid peer ID: %w", err)
+	}
 	// 创建流
-	stream, err := n.host.NewStream(n.ctx, peerID, "/chain/1.0.0/request")
+	stream, err := n.host.NewStream(n.ctx, pID, "/chain/1.0.0/request")
 	if err != nil {
 		return nil, fmt.Errorf("failed to create stream: %w", err)
 	}
@@ -454,7 +481,7 @@ func (n *Network) SendRequest(peerID peer.ID, requestType string, data []byte) (
 			if err.Error() == "EOF" {
 				break
 			}
-			slog.Error("failed to read response", "error", err, "peer", peerID.String())
+			log.Error("failed to read response", "error", err, "peer", peerID)
 			return nil, fmt.Errorf("failed to read response: %w", err)
 		}
 		if bytesRead == 0 {
@@ -462,7 +489,7 @@ func (n *Network) SendRequest(peerID peer.ID, requestType string, data []byte) (
 		}
 	}
 
-	slog.Info("read response", "bytes_read", len(responseData), "peer", peerID.String())
+	log.Info("read response", "bytes_read", len(responseData), "peer", peerID)
 
 	// 解析响应
 	var resp types.Response
@@ -478,23 +505,15 @@ func (n *Network) SendRequest(peerID peer.ID, requestType string, data []byte) (
 	return resp.Data, nil
 }
 
-// RequestBlock 请求特定高度的区块
-func (n *Network) RequestBlock(peerID peer.ID, height uint64) ([]byte, error) {
-	// 序列化区块高度
-	heightData := []byte(fmt.Sprintf("%d", height))
-	return n.SendRequest(peerID, types.RequestTypeGetBlock, heightData)
-}
-
-// RequestChainSync 请求链同步
-func (n *Network) RequestChainSync(peerID peer.ID, fromHeight uint64) ([]byte, error) {
-	// 序列化起始高度
-	fromData := []byte(fmt.Sprintf("%d", fromHeight))
-	return n.SendRequest(peerID, types.RequestTypeSync, fromData)
-}
-
 // GetPeers 获取连接的节点
-func (n *Network) GetPeers() []peer.ID {
-	return n.host.Network().Peers()
+func (n *Network) GetPeers() []string {
+	peers := n.host.Network().Peers()
+	result := make([]string, len(peers))
+	for i, p := range peers {
+		result[i] = p.String()
+	}
+
+	return result
 }
 
 // ConnectToPeer 连接到指定节点（外部API）
@@ -591,18 +610,44 @@ func (n *Network) GetConnectionStats() map[string]interface{} {
 	return stats
 }
 
+// GetLocalAddresses 获取本地节点的地址列表
+func (n *Network) GetLocalAddresses() []string {
+	if n.host == nil {
+		return []string{}
+	}
+
+	addresses := n.host.Addrs()
+	result := make([]string, len(addresses))
+
+	for i, addr := range addresses {
+		// 将地址和节点ID组合成完整的p2p地址
+		fullAddr := fmt.Sprintf("%s/p2p/%s", addr.String(), n.host.ID().String())
+		result[i] = fullAddr
+	}
+
+	return result
+}
+
+// GetLocalPeerID 获取本地节点的Peer ID
+func (n *Network) GetLocalPeerID() string {
+	if n.host == nil {
+		return ""
+	}
+	return n.host.ID().String()
+}
+
 // 实现network.Notifiee接口
 func (n *Network) Listen(network.Network, multiaddr.Multiaddr)      {}
 func (n *Network) ListenClose(network.Network, multiaddr.Multiaddr) {}
 
 func (n *Network) Connected(net network.Network, conn network.Conn) {
-	peerID := conn.RemotePeer()
-	slog.Info("peer connected", "peer_id", peerID.String())
+	// peerID := conn.RemotePeer()
+	// log.Info("peer connected", "peer_id", peerID.String())
 }
 
 func (n *Network) Disconnected(net network.Network, conn network.Conn) {
-	peerID := conn.RemotePeer()
-	slog.Info("peer disconnected", "peer_id", peerID.String())
+	// peerID := conn.RemotePeer()
+	// log.Info("peer disconnected", "peer_id", peerID.String())
 }
 
 func (n *Network) OpenedStream(network.Network, network.Stream) {}
@@ -615,12 +660,12 @@ func (n *Network) HandlePeerFound(pi peer.AddrInfo) {
 		return
 	}
 
-	slog.Info("mDNS peer discovered", "peer_id", pi.ID.String(), "addresses", pi.Addrs)
+	log.Info("mDNS peer discovered", "peer_id", pi.ID.String(), "addresses", pi.Addrs)
 
 	if err := n.host.Connect(n.ctx, pi); err != nil {
-		slog.Error("failed to connect to discovered peer", "peer_id", pi.ID.String(), "error", err)
+		log.Error("failed to connect to discovered peer", "peer_id", pi.ID.String(), "error", err)
 	} else {
-		slog.Info("successfully connected to discovered peer", "peer_id", pi.ID.String())
+		log.Info("successfully connected to discovered peer", "peer_id", pi.ID.String())
 	}
 }
 
@@ -631,7 +676,7 @@ func getOrGeneratePrivateKey(keyPath string) (crypto.PrivKey, error) {
 		// 检查文件是否存在
 		if _, err := os.Stat(keyPath); os.IsNotExist(err) {
 			// 文件不存在，生成新私钥并保存
-			slog.Info("private key file not found, generating new key", "key_path", keyPath)
+			log.Info("private key file not found, generating new key", "key_path", keyPath)
 			priv, _, err := crypto.GenerateKeyPairWithReader(crypto.Ed25519, 2048, rand.Reader)
 			if err != nil {
 				return nil, fmt.Errorf("failed to generate private key: %w", err)
@@ -642,7 +687,7 @@ func getOrGeneratePrivateKey(keyPath string) (crypto.PrivKey, error) {
 				return nil, fmt.Errorf("failed to save private key: %w", err)
 			}
 
-			slog.Info("new private key saved", "key_path", keyPath)
+			log.Info("new private key saved", "key_path", keyPath)
 			return priv, nil
 		}
 
@@ -652,12 +697,12 @@ func getOrGeneratePrivateKey(keyPath string) (crypto.PrivKey, error) {
 			return nil, fmt.Errorf("failed to read private key file: %w", err)
 		}
 
-		slog.Info("private key loaded from file", "key_path", keyPath)
+		log.Info("private key loaded from file", "key_path", keyPath)
 		return priv, nil
 	}
 
 	// 没有指定文件路径，生成临时私钥
-	slog.Info("no private key path specified, generating temporary key")
+	log.Info("no private key path specified, generating temporary key")
 	priv, _, err := crypto.GenerateKeyPairWithReader(crypto.Ed25519, 2048, rand.Reader)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate private key: %w", err)

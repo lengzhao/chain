@@ -13,6 +13,7 @@ import (
 	"github.com/govm-net/chain/types"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/multiformats/go-multiaddr"
+	"github.com/stretchr/testify/assert"
 )
 
 // 测试辅助函数：创建测试网络实例
@@ -153,7 +154,7 @@ func TestRegisterMessageHandler(t *testing.T) {
 
 	// 测试消息处理器
 	messageReceived := make(chan bool, 1)
-	handler := func(peerID peer.ID, data []byte) error {
+	handler := func(peerID string, msg types.Message) error {
 		messageReceived <- true
 		return nil
 	}
@@ -317,7 +318,7 @@ func TestNetworkConcurrency(t *testing.T) {
 			}
 
 			// 并发注册消息处理器
-			handler := func(peerID peer.ID, data []byte) error {
+			handler := func(peerID string, msg types.Message) error {
 				return nil
 			}
 			network.RegisterMessageHandler("test", handler)
@@ -438,8 +439,8 @@ func TestMessageProcessing(t *testing.T) {
 
 	// 注册消息处理器
 	messageReceived := make(chan []byte, 1)
-	handler := func(peerID peer.ID, data []byte) error {
-		messageReceived <- data
+	handler := func(peerID string, msg types.Message) error {
+		messageReceived <- msg.Data
 		return nil
 	}
 	network.RegisterMessageHandler("test", handler)
@@ -789,17 +790,11 @@ func TestGossipsubSubscription(t *testing.T) {
 
 	// 注册消息处理器
 	messageReceived := make(chan []byte, 1)
-	handler := func(peerID peer.ID, data []byte) error {
-		messageReceived <- data
+	handler := func(peerID string, msg types.Message) error {
+		messageReceived <- msg.Data
 		return nil
 	}
 	network.RegisterMessageHandler("test-topic", handler)
-
-	// 订阅主题
-	err = network.SubscribeToTopic("test-topic")
-	if err != nil {
-		t.Fatalf("订阅主题失败: %v", err)
-	}
 
 	// 等待订阅建立
 	time.Sleep(100 * time.Millisecond)
@@ -1127,7 +1122,7 @@ func TestTrustedPeerRealConnection(t *testing.T) {
 	// 检查网络1是否连接到网络2
 	connected := false
 	for _, peer := range peers1 {
-		if peer == host2ID {
+		if peer == host2ID.String() {
 			connected = true
 			break
 		}
@@ -1141,7 +1136,7 @@ func TestTrustedPeerRealConnection(t *testing.T) {
 	host1ID := network1.GetHost().ID()
 	connected = false
 	for _, peer := range peers2 {
-		if peer == host1ID {
+		if peer == host1ID.String() {
 			connected = true
 			break
 		}
@@ -1161,7 +1156,7 @@ func TestTrustedPeerRealConnection(t *testing.T) {
 	peers2 = network2.GetPeers()
 	connected = false
 	for _, peer := range peers2 {
-		if peer == host1ID {
+		if peer == host1ID.String() {
 			connected = true
 			break
 		}
@@ -1351,8 +1346,8 @@ func TestP2PRequestResponse(t *testing.T) {
 
 	// 注册自定义请求处理器到网络2
 	responseReceived := make(chan []byte, 1)
-	network2.RegisterRequestHandler("test_request", func(peerID peer.ID, data []byte) ([]byte, error) {
-		t.Logf("网络2收到来自 %s 的请求，数据: %s", peerID.String(), string(data))
+	network2.RegisterRequestHandler("test_request", func(peerID string, msg types.Request) ([]byte, error) {
+		t.Logf("网络2收到来自 %s 的请求，数据: %s", peerID, string(msg.Data))
 		response := []byte("test_response")
 		responseReceived <- response
 		return response, nil
@@ -1394,7 +1389,7 @@ func TestP2PRequestResponse(t *testing.T) {
 
 	// 从网络1向网络2发送请求
 	requestData := []byte("hello from network1")
-	response, err := network1.SendRequest(host2ID, "test_request", requestData)
+	response, err := network1.SendRequest(host2ID.String(), "test_request", requestData)
 	if err != nil {
 		t.Fatalf("发送请求失败: %v", err)
 	}
@@ -1441,7 +1436,7 @@ func TestP2PRequestErrorHandling(t *testing.T) {
 	time.Sleep(500 * time.Millisecond)
 
 	// 注册返回错误的请求处理器
-	network2.RegisterRequestHandler("error_request", func(peerID peer.ID, data []byte) ([]byte, error) {
+	network2.RegisterRequestHandler("error_request", func(peerID string, msg types.Request) ([]byte, error) {
 		return nil, fmt.Errorf("模拟错误")
 	})
 
@@ -1480,7 +1475,7 @@ func TestP2PRequestErrorHandling(t *testing.T) {
 	}
 
 	// 发送请求，应该返回错误
-	_, err = network1.SendRequest(host2ID, "error_request", []byte("test"))
+	_, err = network1.SendRequest(host2ID.String(), "error_request", []byte("test"))
 	if err == nil {
 		t.Error("应该返回错误但没有")
 	} else {
@@ -1494,7 +1489,7 @@ func TestP2PRequestErrorHandling(t *testing.T) {
 
 	// 测试发送到不存在的节点
 	invalidPeerID, _ := peer.Decode("QmYyQSo1c1Ym7orWxLYvCrM2EmxFTANf8wXmmE7DWjhx5N")
-	_, err = network1.SendRequest(invalidPeerID, "test", []byte("test"))
+	_, err = network1.SendRequest(invalidPeerID.String(), "test", []byte("test"))
 	if err == nil {
 		t.Error("发送到不存在节点应该失败")
 	} else {
@@ -1527,16 +1522,16 @@ func TestP2PRequestTypes(t *testing.T) {
 	time.Sleep(500 * time.Millisecond)
 
 	// 注册不同类型的请求处理器
-	network2.RegisterRequestHandler(types.RequestTypePing, func(peerID peer.ID, data []byte) ([]byte, error) {
+	network2.RegisterRequestHandler(types.RequestTypePing, func(peerID string, msg types.Request) ([]byte, error) {
 		return []byte("pong"), nil
 	})
 
-	network2.RegisterRequestHandler(types.RequestTypeGetBlock, func(peerID peer.ID, data []byte) ([]byte, error) {
-		height := string(data)
+	network2.RegisterRequestHandler(types.RequestTypeGetBlock, func(peerID string, msg types.Request) ([]byte, error) {
+		height := string(msg.Data)
 		return []byte(fmt.Sprintf("block_%s", height)), nil
 	})
 
-	network2.RegisterRequestHandler(types.RequestTypeGetChain, func(peerID peer.ID, data []byte) ([]byte, error) {
+	network2.RegisterRequestHandler(types.RequestTypeGetChain, func(peerID string, msg types.Request) ([]byte, error) {
 		return []byte("chain_data"), nil
 	})
 
@@ -1544,7 +1539,7 @@ func TestP2PRequestTypes(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	// 获取网络2的节点ID
-	peer2ID := network2.GetHost().ID()
+	peer2ID := network2.GetHost().ID().String()
 
 	// 测试ping请求
 	response, err := network1.SendRequest(peer2ID, types.RequestTypePing, []byte("ping"))
@@ -1601,7 +1596,7 @@ func TestP2PRequestConcurrency(t *testing.T) {
 	// 注册并发请求处理器
 	requestCount := 0
 	var mu sync.Mutex
-	network2.RegisterRequestHandler("concurrent_request", func(peerID peer.ID, data []byte) ([]byte, error) {
+	network2.RegisterRequestHandler("concurrent_request", func(peerID string, msg types.Request) ([]byte, error) {
 		mu.Lock()
 		requestCount++
 		currentCount := requestCount
@@ -1616,7 +1611,7 @@ func TestP2PRequestConcurrency(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	// 获取网络2的节点ID
-	peer2ID := network2.GetHost().ID()
+	peer2ID := network2.GetHost().ID().String()
 
 	// 并发发送多个请求
 	const numRequests = 10
@@ -1698,9 +1693,9 @@ func TestP2PRequestLargeData(t *testing.T) {
 	time.Sleep(500 * time.Millisecond)
 
 	// 注册处理大数据量的请求处理器
-	network2.RegisterRequestHandler("large_data", func(peerID peer.ID, data []byte) ([]byte, error) {
+	network2.RegisterRequestHandler("large_data", func(peerID string, msg types.Request) ([]byte, error) {
 		// 返回更大的数据
-		response := make([]byte, len(data)*2)
+		response := make([]byte, len(msg.Data)*2)
 		for i := range response {
 			response[i] = byte(i % 256)
 		}
@@ -1757,7 +1752,7 @@ func TestP2PRequestLargeData(t *testing.T) {
 		var responseErr error
 
 		go func() {
-			response, responseErr = network1.SendRequest(host2ID, "large_data", requestData)
+			response, responseErr = network1.SendRequest(host2ID.String(), "large_data", requestData)
 			done <- true
 		}()
 
@@ -1791,136 +1786,6 @@ func TestP2PRequestLargeData(t *testing.T) {
 	t.Log("大数据量点对点请求测试成功")
 }
 
-// TestP2PRequestChainSync 测试区块链同步请求
-func TestP2PRequestChainSync(t *testing.T) {
-	network1, cleanup1 := createTestNetwork(t, 26722)
-	defer cleanup1()
-
-	network2, cleanup2 := createTestNetwork(t, 26723)
-	defer cleanup2()
-
-	// 启动两个网络
-	err := network1.Start()
-	if err != nil {
-		t.Fatalf("启动网络1失败: %v", err)
-	}
-
-	err = network2.Start()
-	if err != nil {
-		t.Fatalf("启动网络2失败: %v", err)
-	}
-
-	// 等待网络启动
-	time.Sleep(500 * time.Millisecond)
-
-	// 注册链同步请求处理器
-	network2.RegisterRequestHandler(types.RequestTypeSync, func(peerID peer.ID, data []byte) ([]byte, error) {
-		fromHeight := string(data)
-		// 模拟返回从指定高度开始的区块数据
-		syncData := fmt.Sprintf("sync_from_%s_blocks", fromHeight)
-		return []byte(syncData), nil
-	})
-
-	// 等待处理器注册完成
-	time.Sleep(100 * time.Millisecond)
-
-	// 获取网络2的节点ID
-	peer2ID := network2.GetHost().ID()
-
-	// 测试链同步请求
-	fromHeight := uint64(1000)
-	response, err := network1.RequestChainSync(peer2ID, fromHeight)
-	if err != nil {
-		t.Fatalf("链同步请求失败: %v", err)
-	}
-
-	expectedResponse := fmt.Sprintf("sync_from_%d_blocks", fromHeight)
-	if string(response) != expectedResponse {
-		t.Errorf("链同步响应不匹配，期望: %s, 实际: %s", expectedResponse, string(response))
-	}
-
-	t.Log("区块链同步请求测试成功")
-}
-
-// TestP2PRequestBlock 测试区块请求
-func TestP2PRequestBlock(t *testing.T) {
-	network1, cleanup1 := createTestNetwork(t, 26724)
-	defer cleanup1()
-
-	network2, cleanup2 := createTestNetwork(t, 26725)
-	defer cleanup2()
-
-	// 启动两个网络
-	err := network1.Start()
-	if err != nil {
-		t.Fatalf("启动网络1失败: %v", err)
-	}
-
-	err = network2.Start()
-	if err != nil {
-		t.Fatalf("启动网络2失败: %v", err)
-	}
-
-	// 等待网络启动
-	time.Sleep(500 * time.Millisecond)
-
-	// 注册区块请求处理器
-	network2.RegisterRequestHandler(types.RequestTypeGetBlock, func(peerID peer.ID, data []byte) ([]byte, error) {
-		height := string(data)
-		// 模拟返回区块数据
-		blockData := fmt.Sprintf("block_data_height_%s", height)
-		return []byte(blockData), nil
-	})
-
-	// 等待处理器注册完成
-	time.Sleep(100 * time.Millisecond)
-
-	// 获取网络2的地址信息并连接到网络2
-	host2ID := network2.GetHost().ID()
-	host2Addrs := network2.GetHost().Addrs()
-
-	// 构建网络2的完整地址
-	var network2Addr string
-	for _, addr := range host2Addrs {
-		if addr.Protocols()[0].Name == "ip4" {
-			network2Addr = fmt.Sprintf("%s/p2p/%s", addr.String(), host2ID.String())
-			break
-		}
-	}
-
-	if network2Addr == "" {
-		t.Fatal("无法构建网络2的地址")
-	}
-
-	// 网络1连接到网络2
-	err = network1.ConnectToPeer(network2Addr)
-	if err != nil {
-		t.Fatalf("连接网络2失败: %v", err)
-	}
-
-	// 等待连接建立
-	time.Sleep(1 * time.Second)
-
-	// 验证连接是否建立
-	if !network1.IsPeerConnected(host2ID) {
-		t.Fatal("网络1应该连接到网络2")
-	}
-
-	// 测试区块请求
-	blockHeight := uint64(12345)
-	response, err := network1.RequestBlock(host2ID, blockHeight)
-	if err != nil {
-		t.Fatalf("区块请求失败: %v", err)
-	}
-
-	expectedResponse := fmt.Sprintf("block_data_height_%d", blockHeight)
-	if string(response) != expectedResponse {
-		t.Errorf("区块响应不匹配，期望: %s, 实际: %s", expectedResponse, string(response))
-	}
-
-	t.Log("区块请求测试成功")
-}
-
 // BenchmarkP2PRequest 基准测试点对点请求性能
 func BenchmarkP2PRequest(b *testing.B) {
 	network1, cleanup1 := createTestNetwork(b, 26726)
@@ -1944,7 +1809,7 @@ func BenchmarkP2PRequest(b *testing.B) {
 	time.Sleep(500 * time.Millisecond)
 
 	// 注册简单的请求处理器
-	network2.RegisterRequestHandler("benchmark", func(peerID peer.ID, data []byte) ([]byte, error) {
+	network2.RegisterRequestHandler("benchmark", func(peerID string, msg types.Request) ([]byte, error) {
 		return []byte("benchmark_response"), nil
 	})
 
@@ -1985,9 +1850,67 @@ func BenchmarkP2PRequest(b *testing.B) {
 	// 基准测试
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_, err := network1.SendRequest(host2ID, "benchmark", []byte("test"))
+		_, err := network1.SendRequest(host2ID.String(), "benchmark", []byte("test"))
 		if err != nil {
 			b.Fatalf("请求失败: %v", err)
 		}
 	}
+}
+
+func TestNetwork_GetLocalAddresses(t *testing.T) {
+	// 创建测试配置
+	cfg := config.NetworkConfig{
+		Host:     "127.0.0.1",
+		Port:     0, // 使用随机端口
+		MaxPeers: 10,
+	}
+
+	// 创建网络实例
+	net, err := New(cfg)
+	assert.NoError(t, err)
+	assert.NotNil(t, net)
+
+	// 启动网络
+	err = net.Start()
+	assert.NoError(t, err)
+
+	// 获取本地地址
+	addresses := net.GetLocalAddresses()
+	assert.NotEmpty(t, addresses)
+
+	// 验证地址格式
+	for _, addr := range addresses {
+		t.Logf("Local address: %s", addr)
+		// 地址应该包含 /p2p/ 部分
+		assert.Contains(t, addr, "/p2p/")
+	}
+
+	// 清理
+	net.Stop()
+}
+
+func TestNetwork_GetLocalPeerID(t *testing.T) {
+	// 创建测试配置
+	cfg := config.NetworkConfig{
+		Host:     "127.0.0.1",
+		Port:     0, // 使用随机端口
+		MaxPeers: 10,
+	}
+
+	// 创建网络实例
+	net, err := New(cfg)
+	assert.NoError(t, err)
+	assert.NotNil(t, net)
+
+	// 启动网络
+	err = net.Start()
+	assert.NoError(t, err)
+
+	// 获取本地Peer ID
+	peerID := net.GetLocalPeerID()
+	assert.NotEmpty(t, peerID)
+	t.Logf("Local Peer ID: %s", peerID)
+
+	// 清理
+	net.Stop()
 }
