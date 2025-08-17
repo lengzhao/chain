@@ -59,8 +59,6 @@ type StorageInterface interface {
 
 // NetworkInterface 网络模块接口
 type NetworkInterface interface {
-	Start() error
-	Stop()
 	BroadcastMessage(topic string, data []byte) error
 	RegisterMessageHandler(topic string, handler MessageHandler)
 	RegisterRequestHandler(requestType string, handler RequestHandler)

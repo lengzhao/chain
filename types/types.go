@@ -3,6 +3,7 @@ package types
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"time"
 )
 
@@ -29,29 +30,29 @@ func (b Hash) Bytes() []byte {
 // Block 区块结构
 type Block struct {
 	Header       BlockHeader `json:"header"`
-	Transactions []Transaction `json:"transactions"`
+	Transactions []Hash      `json:"transactions"`
 }
 
 // BlockHeader 区块头
 type BlockHeader struct {
-	Height     uint64    `json:"height"`
-	Timestamp  time.Time `json:"timestamp"`
-	PrevHash   Hash      `json:"prev_hash"`
-	StateRoot  Hash      `json:"state_root"`
-	TxRoot     Hash      `json:"tx_root"`
-	Consensus  []byte    `json:"consensus"`
+	ChainID   Hash      `json:"chain_id"`
+	Height    uint64    `json:"height"`
+	Timestamp time.Time `json:"timestamp"`
+	PrevHash  Hash      `json:"prev_hash"`
+	StateRoot Hash      `json:"state_root"`
+	TxRoot    Hash      `json:"tx_root"`
+	Consensus []byte    `json:"consensus"`
 }
 
 // Transaction 交易结构
 type Transaction struct {
-	Hash        Hash      `json:"hash"`
-	From        []byte    `json:"from"`
-	To          []byte    `json:"to"`
-	Data        []byte    `json:"data"`
-	Nonce       uint64    `json:"nonce"`
-	Timestamp   time.Time `json:"timestamp"`
-	AccessList  AccessList `json:"access_list"`
-	Signature   []byte    `json:"signature"`
+	ChainID    Hash       `json:"chain_id"`
+	From       []byte     `json:"from"`
+	To         []byte     `json:"to"`
+	Data       []byte     `json:"data"`
+	Nonce      uint64     `json:"nonce"`
+	AccessList AccessList `json:"access_list"`
+	Signature  []byte     `json:"signature"`
 }
 
 // AccessList 访问列表
@@ -64,8 +65,14 @@ type AccessList struct {
 func (tx *Transaction) CalculateHash() Hash {
 	data := append(tx.From, tx.To...)
 	data = append(data, tx.Data...)
-	data = append(data, byte(tx.Nonce))
-	
+	data = append(data, []byte(fmt.Sprintf("%d", tx.Nonce))...)
+	for _, read := range tx.AccessList.Reads {
+		data = append(data, read.Bytes()...)
+	}
+	for _, write := range tx.AccessList.Writes {
+		data = append(data, write.Bytes()...)
+	}
+
 	hash := sha256.Sum256(data)
 	return NewHash(hash[:])
 }
@@ -76,7 +83,7 @@ func (b *Block) CalculateBlockHash() Hash {
 	data = append(data, b.Header.PrevHash.Bytes()...)
 	data = append(data, b.Header.StateRoot.Bytes()...)
 	data = append(data, b.Header.TxRoot.Bytes()...)
-	
+
 	hash := sha256.Sum256(data)
 	return NewHash(hash[:])
-} 
+}
