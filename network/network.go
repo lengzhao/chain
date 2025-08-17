@@ -309,20 +309,7 @@ func (n *Network) BroadcastMessage(topic string, data []byte) error {
 		return fmt.Errorf("failed to get topic: %w", err)
 	}
 
-	message := &types.Message{
-		Type: topic,
-		Data: data,
-		From: n.host.ID().String(),
-		To:   "",
-		Time: time.Now(),
-	}
-
-	messageData, err := message.Serialize()
-	if err != nil {
-		return fmt.Errorf("failed to serialize message: %w", err)
-	}
-
-	if err := topicObj.Publish(n.ctx, messageData); err != nil {
+	if err := topicObj.Publish(n.ctx, data); err != nil {
 		return fmt.Errorf("failed to publish message: %w", err)
 	}
 
@@ -398,14 +385,13 @@ func (n *Network) processPubsubMessage(topicName string, msg *pubsub.Message) {
 	if !exists {
 		return
 	}
-
-	msgData, err := types.DeserializeMessage(msg.Data)
-	if err != nil {
-		log.Error("failed to deserialize message", "error", err)
-		return
+	netMsg := types.NetMessage{
+		From:  msg.ReceivedFrom.String(),
+		Topic: topicName,
+		Data:  msg.Data,
 	}
 
-	if err := handler(msg.ReceivedFrom.String(), *msgData); err != nil {
+	if err := handler(msg.ReceivedFrom.String(), netMsg); err != nil {
 		log.Error("failed to process message", "error", err)
 	}
 }

@@ -26,10 +26,12 @@ type NetworkConfig struct {
 
 // ConsensusConfig 共识配置
 type ConsensusConfig struct {
-	Algorithm string `yaml:"algorithm"`
-	MaxFaulty int    `yaml:"max_faulty"`
-	BlockTime int    `yaml:"block_time"`
-	BatchSize int    `yaml:"batch_size"`
+	Algorithm       string `yaml:"algorithm"`
+	ValidatorsCount int    `yaml:"validators_count"`
+	BlockTime       int    `yaml:"block_time"`
+	RoundBlocks     int    `yaml:"round_blocks"`
+	MinStake        int64  `yaml:"min_stake"`
+	VotingPeriod    int    `yaml:"voting_period"`
 }
 
 // StorageConfig 存储配置
@@ -73,10 +75,12 @@ func DefaultConfig() *Config {
 			PrivateKeyPath: "",         // 默认空，表示自动生成私钥
 		},
 		Consensus: ConsensusConfig{
-			Algorithm: "pbft",
-			MaxFaulty: 1,
-			BlockTime: 1000,
-			BatchSize: 1000,
+			Algorithm:       "dpos",
+			ValidatorsCount: 21,
+			BlockTime:       3000,
+			RoundBlocks:     21,
+			MinStake:        1000000,
+			VotingPeriod:    86400,
 		},
 		Storage: StorageConfig{
 			DataDir:     "./data",

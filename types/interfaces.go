@@ -1,34 +1,11 @@
 package types
 
-// ConsensusNetworkInterface 共识模块需要的网络接口
-// 这是NetworkInterface的子集，只包含共识需要的功能
-type ConsensusNetworkInterface interface {
-	// 消息广播和发送
-	BroadcastMessage(topic string, data []byte) error
-	SendRequest(peerID string, requestType string, data []byte) ([]byte, error)
-
-	// 消息接收
-	RegisterMessageHandler(topic string, handler MessageHandler)
-
-	// 节点管理
-	GetPeers() []string
-}
-
 // NetworkMessage 网络消息
 type NetworkMessage struct {
 	From  string
 	To    string
 	Topic string
 	Data  []byte
-}
-
-// PBFT 共识接口
-type PBFT interface {
-	Start() error
-	Stop() error
-	HandleClientRequest(req interface{}) error
-	HandleConsensusMessage(msg interface{}) error
-	GetState() interface{}
 }
 
 // MessageValidator 消息验证器接口
@@ -72,7 +49,7 @@ type NetworkInterface interface {
 }
 
 // MessageHandler 消息处理器
-type MessageHandler func(peerID string, msg Message) error
+type MessageHandler func(peerID string, msg NetMessage) error
 
 // RequestHandler 请求处理器
 type RequestHandler func(peerID string, msg Request) ([]byte, error)
@@ -96,10 +73,12 @@ type NetworkConfig struct {
 
 // ConsensusConfig 共识配置
 type ConsensusConfig struct {
-	Algorithm string `yaml:"algorithm"`
-	MaxFaulty int    `yaml:"max_faulty"`
-	BlockTime int    `yaml:"block_time"`
-	BatchSize int    `yaml:"batch_size"`
+	Algorithm       string `yaml:"algorithm"`
+	ValidatorsCount int    `yaml:"validators_count"`
+	BlockTime       int    `yaml:"block_time"`
+	RoundBlocks     int    `yaml:"round_blocks"`
+	MinStake        int64  `yaml:"min_stake"`
+	VotingPeriod    int    `yaml:"voting_period"`
 }
 
 // StorageConfig 存储配置

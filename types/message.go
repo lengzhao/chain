@@ -1,120 +1,220 @@
 package types
 
 import (
-	"encoding/binary"
-	"encoding/json"
-	"fmt"
+	"bytes"
+	"encoding/gob"
 	"time"
 )
 
-// Message 网络消息
-type Message struct {
-	Type string    `json:"type"`
-	Data []byte    `json:"data"`
-	From string    `json:"from"`
-	To   string    `json:"to"`
-	Time time.Time `json:"time"`
+// NetMessage 网络消息
+type NetMessage struct {
+	Topic string
+	From  string
+	Data  []byte
 }
 
-// Serialize 序列化消息
-func (m *Message) Serialize() ([]byte, error) {
-	return json.Marshal(m)
+// Request 请求消息
+type Request struct {
+	Type      string    `json:"type"`
+	Data      []byte    `json:"data"`
+	Timestamp time.Time `json:"timestamp"`
 }
 
-// DeserializeMessage 反序列化消息
-func DeserializeMessage(data []byte) (*Message, error) {
-	var msg Message
-	if err := json.Unmarshal(data, &msg); err != nil {
+// Response 响应消息
+type Response struct {
+	Type      string    `json:"type"`
+	Data      []byte    `json:"data"`
+	Error     string    `json:"error,omitempty"`
+	Timestamp time.Time `json:"timestamp"`
+}
+
+// Serialize 序列化请求
+func (r *Request) Serialize() ([]byte, error) {
+	var buf bytes.Buffer
+	encoder := gob.NewEncoder(&buf)
+	err := encoder.Encode(r)
+	if err != nil {
 		return nil, err
 	}
-	return &msg, nil
+	return buf.Bytes(), nil
 }
 
-// MessageType 消息类型常量
-const (
-	MessageTypeBlock       = "block"
-	MessageTypeTransaction = "transaction"
-	MessageTypeConsensus   = "consensus"
-	MessageTypePing        = "ping"
-	MessageTypePong        = "pong"
-)
-
-// Request 点对点请求
-type Request struct {
-	Type string `json:"type"`
-	Data []byte `json:"data"`
-}
-
-// Response 点对点响应
-type Response = Request
-
-// Serialize 序列化请求 - 使用二进制格式: typeLen(int16) + dataLen(int16) + type + data
-func (r *Request) Serialize() ([]byte, error) {
-	typeLen := len(r.Type)
-	dataLen := len(r.Data)
-
-	// 检查长度限制 (int16 最大值 65535)
-	if typeLen > 65535 || dataLen > 65535 {
-		return nil, fmt.Errorf("type or data length exceeds int16 limit")
-	}
-
-	// 计算总长度: 2 bytes (typeLen) + 2 bytes (dataLen) + typeLen + dataLen
-	totalLen := 4 + typeLen + dataLen
-	result := make([]byte, totalLen)
-
-	// 写入 typeLen (int16, 小端序)
-	binary.LittleEndian.PutUint16(result[0:2], uint16(typeLen))
-
-	// 写入 dataLen (int16, 小端序)
-	binary.LittleEndian.PutUint16(result[2:4], uint16(dataLen))
-
-	// 写入 type
-	copy(result[4:4+typeLen], []byte(r.Type))
-
-	// 写入 data
-	if dataLen > 0 {
-		copy(result[4+typeLen:], r.Data)
-	}
-
-	return result, nil
-}
-
-// Deserialize 反序列化请求 - 解析二进制格式
+// Deserialize 反序列化请求
 func (r *Request) Deserialize(data []byte) error {
-	if len(data) < 4 {
-		return fmt.Errorf("data too short, need at least 4 bytes")
-	}
-
-	// 读取 typeLen (int16, 小端序)
-	typeLen := int(binary.LittleEndian.Uint16(data[0:2]))
-
-	// 读取 dataLen (int16, 小端序)
-	dataLen := int(binary.LittleEndian.Uint16(data[2:4]))
-
-	// 验证数据长度
-	expectedLen := 4 + typeLen + dataLen
-	if len(data) < expectedLen {
-		return fmt.Errorf("data length mismatch, expected %d, got %d", expectedLen, len(data))
-	}
-
-	// 读取 type
-	r.Type = string(data[4 : 4+typeLen])
-
-	// 读取 data
-	if dataLen > 0 {
-		r.Data = make([]byte, dataLen)
-		copy(r.Data, data[4+typeLen:4+typeLen+dataLen])
-	} else {
-		r.Data = nil
-	}
-
-	return nil
+	buf := bytes.NewBuffer(data)
+	decoder := gob.NewDecoder(buf)
+	return decoder.Decode(r)
 }
 
-// 请求类型常量
-const (
-	RequestTypePing     = "ping"
-	RequestTypeGetBlock = "get_block"
-	RequestTypeGetChain = "get_chain"
-	RequestTypeSync     = "sync"
-)
+// Serialize 序列化响应
+func (resp *Response) Serialize() ([]byte, error) {
+	var buf bytes.Buffer
+	encoder := gob.NewEncoder(&buf)
+	err := encoder.Encode(resp)
+	if err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+// Deserialize 反序列化响应
+func (resp *Response) Deserialize(data []byte) error {
+	buf := bytes.NewBuffer(data)
+	decoder := gob.NewDecoder(buf)
+	return decoder.Decode(resp)
+}
+
+// DPOS 相关消息类型
+
+// VoteMessage 投票消息
+type VoteMessage struct {
+	Voter      string `json:"voter"`       // 投票者地址
+	Candidate  string `json:"candidate"`   // 候选人地址
+	VoteAmount int64  `json:"vote_amount"` // 投票数量
+	Round      uint64 `json:"round"`       // 投票轮次
+}
+
+// ValidatorRegistrationMessage 验证者注册消息
+type ValidatorRegistrationMessage struct {
+	Candidate   string `json:"candidate"`    // 候选人地址
+	StakeAmount int64  `json:"stake_amount"` // 质押数量
+	PublicKey   []byte `json:"public_key"`   // 公钥
+}
+
+// BlockProposalMessage 区块提议消息
+type BlockProposalMessage struct {
+	Validator string `json:"validator"` // 验证者地址
+	Round     uint64 `json:"round"`     // 轮次
+	Slot      int    `json:"slot"`      // 槽位
+	Block     *Block `json:"block"`     // 区块
+}
+
+// BlockConfirmationMessage 区块确认消息
+type BlockConfirmationMessage struct {
+	Validator string `json:"validator"`  // 验证者地址
+	BlockHash Hash   `json:"block_hash"` // 区块哈希
+	Round     uint64 `json:"round"`      // 轮次
+	Slot      int    `json:"slot"`       // 槽位
+}
+
+// ValidatorSetMessage 验证者集合消息
+type ValidatorSetMessage struct {
+	Round      uint64   `json:"round"`      // 轮次
+	Validators []string `json:"validators"` // 验证者列表
+	Weights    []int64  `json:"weights"`    // 权重列表
+}
+
+// RoundChangeMessage 轮次变更消息
+type RoundChangeMessage struct {
+	OldRound uint64 `json:"old_round"` // 旧轮次
+	NewRound uint64 `json:"new_round"` // 新轮次
+	Height   uint64 `json:"height"`    // 区块高度
+}
+
+// Serialize 序列化投票消息
+func (vm *VoteMessage) Serialize() ([]byte, error) {
+	var buf bytes.Buffer
+	encoder := gob.NewEncoder(&buf)
+	err := encoder.Encode(vm)
+	if err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+// Deserialize 反序列化投票消息
+func (vm *VoteMessage) Deserialize(data []byte) error {
+	buf := bytes.NewBuffer(data)
+	decoder := gob.NewDecoder(buf)
+	return decoder.Decode(vm)
+}
+
+// Serialize 序列化验证者注册消息
+func (vrm *ValidatorRegistrationMessage) Serialize() ([]byte, error) {
+	var buf bytes.Buffer
+	encoder := gob.NewEncoder(&buf)
+	err := encoder.Encode(vrm)
+	if err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+// Deserialize 反序列化验证者注册消息
+func (vrm *ValidatorRegistrationMessage) Deserialize(data []byte) error {
+	buf := bytes.NewBuffer(data)
+	decoder := gob.NewDecoder(buf)
+	return decoder.Decode(vrm)
+}
+
+// Serialize 序列化区块提议消息
+func (bpm *BlockProposalMessage) Serialize() ([]byte, error) {
+	var buf bytes.Buffer
+	encoder := gob.NewEncoder(&buf)
+	err := encoder.Encode(bpm)
+	if err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+// Deserialize 反序列化区块提议消息
+func (bpm *BlockProposalMessage) Deserialize(data []byte) error {
+	buf := bytes.NewBuffer(data)
+	decoder := gob.NewDecoder(buf)
+	return decoder.Decode(bpm)
+}
+
+// Serialize 序列化区块确认消息
+func (bcm *BlockConfirmationMessage) Serialize() ([]byte, error) {
+	var buf bytes.Buffer
+	encoder := gob.NewEncoder(&buf)
+	err := encoder.Encode(bcm)
+	if err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+// Deserialize 反序列化区块确认消息
+func (bcm *BlockConfirmationMessage) Deserialize(data []byte) error {
+	buf := bytes.NewBuffer(data)
+	decoder := gob.NewDecoder(buf)
+	return decoder.Decode(bcm)
+}
+
+// Serialize 序列化验证者集合消息
+func (vsm *ValidatorSetMessage) Serialize() ([]byte, error) {
+	var buf bytes.Buffer
+	encoder := gob.NewEncoder(&buf)
+	err := encoder.Encode(vsm)
+	if err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+// Deserialize 反序列化验证者集合消息
+func (vsm *ValidatorSetMessage) Deserialize(data []byte) error {
+	buf := bytes.NewBuffer(data)
+	decoder := gob.NewDecoder(buf)
+	return decoder.Decode(vsm)
+}
+
+// Serialize 序列化轮次变更消息
+func (rcm *RoundChangeMessage) Serialize() ([]byte, error) {
+	var buf bytes.Buffer
+	encoder := gob.NewEncoder(&buf)
+	err := encoder.Encode(rcm)
+	if err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+// Deserialize 反序列化轮次变更消息
+func (rcm *RoundChangeMessage) Deserialize(data []byte) error {
+	buf := bytes.NewBuffer(data)
+	decoder := gob.NewDecoder(buf)
+	return decoder.Decode(rcm)
+}

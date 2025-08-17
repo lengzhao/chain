@@ -154,7 +154,7 @@ func TestRegisterMessageHandler(t *testing.T) {
 
 	// 测试消息处理器
 	messageReceived := make(chan bool, 1)
-	handler := func(peerID string, msg types.Message) error {
+	handler := func(peerID string, msg types.NetMessage) error {
 		messageReceived <- true
 		return nil
 	}
@@ -225,46 +225,6 @@ func TestConnectToPeer(t *testing.T) {
 	}
 }
 
-func TestMessageSerialization(t *testing.T) {
-	// 测试消息序列化和反序列化
-	originalMessage := &types.Message{
-		Type: "test",
-		Data: []byte("test data"),
-		From: "peer1",
-		To:   "peer2",
-		Time: time.Now(),
-	}
-
-	// 序列化
-	serialized, err := originalMessage.Serialize()
-	if err != nil {
-		t.Fatalf("failed to serialize message: %v", err)
-	}
-
-	// 反序列化
-	deserialized, err := types.DeserializeMessage(serialized)
-	if err != nil {
-		t.Fatalf("反failed to serialize message: %v", err)
-	}
-
-	// 验证字段
-	if deserialized.Type != originalMessage.Type {
-		t.Errorf("message type mismatch: 期望 %s, 得到 %s", originalMessage.Type, deserialized.Type)
-	}
-
-	if string(deserialized.Data) != string(originalMessage.Data) {
-		t.Errorf("message data mismatch: 期望 %s, 得到 %s", string(originalMessage.Data), string(deserialized.Data))
-	}
-
-	if deserialized.From != originalMessage.From {
-		t.Errorf("message source mismatch: 期望 %s, 得到 %s", originalMessage.From, deserialized.From)
-	}
-
-	if deserialized.To != originalMessage.To {
-		t.Errorf("message target mismatch: 期望 %s, 得到 %s", originalMessage.To, deserialized.To)
-	}
-}
-
 func TestNetworkConfigValidation(t *testing.T) {
 	// 测试无效配置
 	invalidConfigs := []config.NetworkConfig{
@@ -318,7 +278,7 @@ func TestNetworkConcurrency(t *testing.T) {
 			}
 
 			// 并发注册消息处理器
-			handler := func(peerID string, msg types.Message) error {
+			handler := func(peerID string, msg types.NetMessage) error {
 				return nil
 			}
 			network.RegisterMessageHandler("test", handler)
@@ -423,82 +383,6 @@ func TestNetworkErrorHandling(t *testing.T) {
 	if err == nil {
 		t.Error("使用无效配置创建网络应该失败")
 	}
-}
-
-// 测试消息处理
-func TestMessageProcessing(t *testing.T) {
-	network, cleanup := createTestNetwork(t, 26667)
-	defer cleanup()
-
-	// 启动网络
-	err := network.Start()
-	if err != nil {
-		t.Fatalf("failed to start network: %v", err)
-	}
-	defer network.Stop()
-
-	// 注册消息处理器
-	messageReceived := make(chan []byte, 1)
-	handler := func(peerID string, msg types.Message) error {
-		messageReceived <- msg.Data
-		return nil
-	}
-	network.RegisterMessageHandler("test", handler)
-
-	// 等待处理器注册完成
-	time.Sleep(100 * time.Millisecond)
-
-	// 测试消息序列化和反序列化
-	testMessage := &types.Message{
-		Type: "test",
-		Data: []byte("test data"),
-		From: "peer1",
-		To:   "peer2",
-		Time: time.Now(),
-	}
-
-	// 序列化消息
-	serialized, err := testMessage.Serialize()
-	if err != nil {
-		t.Fatalf("failed to serialize message: %v", err)
-	}
-
-	// 反序列化消息
-	deserialized, err := types.DeserializeMessage(serialized)
-	if err != nil {
-		t.Fatalf("反failed to serialize message: %v", err)
-	}
-
-	// 验证消息内容
-	if deserialized.Type != testMessage.Type {
-		t.Errorf("message type mismatch: 期望 %s, 得到 %s", testMessage.Type, deserialized.Type)
-	}
-
-	if string(deserialized.Data) != string(testMessage.Data) {
-		t.Errorf("message data mismatch: 期望 %s, 得到 %s", string(testMessage.Data), string(deserialized.Data))
-	}
-}
-
-// 测试连接管理
-func TestConnectionManagement(t *testing.T) {
-	network, cleanup := createTestNetwork(t, 26668)
-	defer cleanup()
-
-	// 启动网络
-	err := network.Start()
-	if err != nil {
-		t.Fatalf("failed to start network: %v", err)
-	}
-	defer network.Stop()
-
-	// 测试连接管理
-	peers := network.GetPeers()
-	if len(peers) != 0 {
-		t.Errorf("初始状态下should have no connected peers but found %d 个", len(peers))
-	}
-
-	// 等待连接管理启动
-	time.Sleep(100 * time.Millisecond)
 }
 
 // 测试网络接口实现
@@ -790,7 +674,7 @@ func TestGossipsubSubscription(t *testing.T) {
 
 	// 注册消息处理器
 	messageReceived := make(chan []byte, 1)
-	handler := func(peerID string, msg types.Message) error {
+	handler := func(peerID string, msg types.NetMessage) error {
 		messageReceived <- msg.Data
 		return nil
 	}
@@ -1522,16 +1406,16 @@ func TestP2PRequestTypes(t *testing.T) {
 	time.Sleep(500 * time.Millisecond)
 
 	// 注册不同类型的请求处理器
-	network2.RegisterRequestHandler(types.RequestTypePing, func(peerID string, msg types.Request) ([]byte, error) {
+	network2.RegisterRequestHandler("ping", func(peerID string, msg types.Request) ([]byte, error) {
 		return []byte("pong"), nil
 	})
 
-	network2.RegisterRequestHandler(types.RequestTypeGetBlock, func(peerID string, msg types.Request) ([]byte, error) {
+	network2.RegisterRequestHandler("get_block", func(peerID string, msg types.Request) ([]byte, error) {
 		height := string(msg.Data)
 		return []byte(fmt.Sprintf("block_%s", height)), nil
 	})
 
-	network2.RegisterRequestHandler(types.RequestTypeGetChain, func(peerID string, msg types.Request) ([]byte, error) {
+	network2.RegisterRequestHandler("get_chain", func(peerID string, msg types.Request) ([]byte, error) {
 		return []byte("chain_data"), nil
 	})
 
@@ -1542,7 +1426,7 @@ func TestP2PRequestTypes(t *testing.T) {
 	peer2ID := network2.GetHost().ID().String()
 
 	// 测试ping请求
-	response, err := network1.SendRequest(peer2ID, types.RequestTypePing, []byte("ping"))
+	response, err := network1.SendRequest(peer2ID, "ping", []byte("ping"))
 	if err != nil {
 		t.Fatalf("ping请求失败: %v", err)
 	}
@@ -1551,7 +1435,7 @@ func TestP2PRequestTypes(t *testing.T) {
 	}
 
 	// 测试获取区块请求
-	response, err = network1.SendRequest(peer2ID, types.RequestTypeGetBlock, []byte("100"))
+	response, err = network1.SendRequest(peer2ID, "get_block", []byte("100"))
 	if err != nil {
 		t.Fatalf("获取区块请求失败: %v", err)
 	}
@@ -1560,7 +1444,7 @@ func TestP2PRequestTypes(t *testing.T) {
 	}
 
 	// 测试获取链请求
-	response, err = network1.SendRequest(peer2ID, types.RequestTypeGetChain, []byte("sync"))
+	response, err = network1.SendRequest(peer2ID, "get_chain", []byte("sync"))
 	if err != nil {
 		t.Fatalf("获取链请求失败: %v", err)
 	}
