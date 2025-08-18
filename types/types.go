@@ -64,7 +64,9 @@ type AccessList struct {
 
 // CalculateHash 计算交易的Hash
 func (tx *Transaction) CalculateHash() Hash {
-	data := append(tx.From, tx.To...)
+	data := tx.ChainID[:]
+	data = append(data, tx.From...)
+	data = append(data, tx.To...)
 	data = append(data, tx.Data...)
 	data = append(data, []byte(fmt.Sprintf("%d", tx.Nonce))...)
 	for _, read := range tx.AccessList.Reads {
@@ -80,7 +82,7 @@ func (tx *Transaction) CalculateHash() Hash {
 
 // CalculateBlockHash 计算区块的Hash
 func (b *Block) CalculateBlockHash() Hash {
-	data := append([]byte{}, byte(b.Header.Height))
+	data := append(b.Header.ChainID[:], byte(b.Header.Height))
 	data = append(data, b.Header.PrevHash.Bytes()...)
 	data = append(data, b.Header.StateRoot.Bytes()...)
 	data = append(data, b.Header.TxRoot.Bytes()...)
