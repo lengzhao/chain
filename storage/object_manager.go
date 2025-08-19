@@ -17,8 +17,12 @@ type ObjectManager struct {
 	ctx     context.Context
 }
 
+type objectNewCount struct{}
+
 // NewObjectManager 创建新的ObjectManager实例
 func NewObjectManager(storage *Storage, ctx context.Context) *ObjectManager {
+	var count int = 1
+	ctx = context.WithValue(ctx, objectNewCount{}, count)
 	return &ObjectManager{
 		storage: storage,
 		ctx:     ctx,
@@ -165,11 +169,11 @@ func (om *ObjectManager) GetObjectStorage(id types.Hash) (*ObjectStorage, error)
 func (om *ObjectManager) generateObjectID(owner, contract []byte) types.Hash {
 	data := append(owner, contract...)
 	txHash := om.ctx.Value("tx_hash")
-	if txHash != nil {
-		hashStr := fmt.Sprintf("%s", txHash)
-		data = append(data, []byte(hashStr)...)
-	}
-	// todo: 添加次数序号，防止tx hash相同导致object id相同
+
+	count := om.ctx.Value(objectNewCount{}).(int)
+	om.ctx = context.WithValue(om.ctx, objectNewCount{}, count+1)
+	hashStr := fmt.Sprintf("%s:%d", txHash, count)
+	data = append(data, []byte(hashStr)...)
 
 	hash := sha256.Sum256(data)
 	return types.NewHash(hash[:])
