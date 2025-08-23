@@ -48,7 +48,7 @@ func TestObjectManagerCreateObject(t *testing.T) {
 	}
 	defer storage.Stop()
 
-	ctx := context.WithValue(context.Background(), "tx_hash", types.NewHash([]byte("test_tx_hash_123456789012345678901234567890")))
+	ctx := context.WithValue(context.Background(), types.CtxTxHash{}, types.NewHash([]byte("test_tx_hash_123456789012345678901234567890")))
 	objectManager := NewObjectManager(storage, ctx)
 
 	owner := []byte("test_owner")
@@ -88,7 +88,7 @@ func TestObjectManagerGetObject(t *testing.T) {
 	}
 	defer storage.Stop()
 
-	ctx := context.WithValue(context.Background(), "tx_hash", types.NewHash([]byte("test_tx_hash_123456789012345678901234567890")))
+	ctx := context.WithValue(context.Background(), types.CtxTxHash{}, types.NewHash([]byte("test_tx_hash_123456789012345678901234567890")))
 	objectManager := NewObjectManager(storage, ctx)
 
 	owner := []byte("test_owner")
@@ -165,7 +165,7 @@ func TestObjectManagerTransferObject(t *testing.T) {
 	}
 	defer storage.Stop()
 
-	ctx := context.WithValue(context.Background(), "tx_hash", types.NewHash([]byte("test_tx_hash_123456789012345678901234567890")))
+	ctx := context.WithValue(context.Background(), types.CtxTxHash{}, types.NewHash([]byte("test_tx_hash_123456789012345678901234567890")))
 	objectManager := NewObjectManager(storage, ctx)
 
 	owner := []byte("original_owner")
@@ -211,7 +211,7 @@ func TestObjectManagerDeleteObject(t *testing.T) {
 	}
 	defer storage.Stop()
 
-	ctx := context.WithValue(context.Background(), "tx_hash", types.NewHash([]byte("test_tx_hash_123456789012345678901234567890")))
+	ctx := context.WithValue(context.Background(), types.CtxTxHash{}, types.NewHash([]byte("test_tx_hash_123456789012345678901234567890")))
 	objectManager := NewObjectManager(storage, ctx)
 
 	owner := []byte("test_owner")
@@ -251,7 +251,7 @@ func TestObjectManagerGetObjectStorage(t *testing.T) {
 	}
 	defer storage.Stop()
 
-	ctx := context.WithValue(context.Background(), "tx_hash", types.NewHash([]byte("test_tx_hash_123456789012345678901234567890")))
+	ctx := context.WithValue(context.Background(), types.CtxTxHash{}, types.NewHash([]byte("test_tx_hash_123456789012345678901234567890")))
 	objectManager := NewObjectManager(storage, ctx)
 
 	owner := []byte("test_owner")

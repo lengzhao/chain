@@ -50,7 +50,7 @@ func (om *ObjectManager) CreateObject(owner, contract []byte) (*types.Object, er
 	}
 
 	// 创建生命周期索引
-	err = om.createLifecycleIndex(object.ID, 2) // 默认2年生命周期
+	err = om.createLifecycleIndex(object.ID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create lifecycle index: %w", err)
 	}
@@ -168,7 +168,7 @@ func (om *ObjectManager) GetObjectStorage(id types.Hash) (*ObjectStorage, error)
 // generateObjectID 生成Object ID
 func (om *ObjectManager) generateObjectID(owner, contract []byte) types.Hash {
 	data := append(owner, contract...)
-	txHash := om.ctx.Value("tx_hash")
+	txHash := om.ctx.Value(types.CtxTxHash{})
 
 	count := om.ctx.Value(objectNewCount{}).(int)
 	om.ctx = context.WithValue(om.ctx, objectNewCount{}, count+1)
@@ -233,7 +233,7 @@ func (om *ObjectManager) buildContractIndexKey(contract []byte, id types.Hash) [
 }
 
 // createLifecycleIndex 创建生命周期索引
-func (om *ObjectManager) createLifecycleIndex(objectID types.Hash, lifetimeYears int) error {
+func (om *ObjectManager) createLifecycleIndex(objectID types.Hash) error {
 	// 从ctx中获取block time
 	blockTime := om.getBlockTime()
 

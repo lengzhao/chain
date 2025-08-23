@@ -8,6 +8,7 @@ import (
 	"github.com/govm-net/chain/config"
 	"github.com/govm-net/chain/consensus"
 	"github.com/govm-net/chain/execution"
+	"github.com/govm-net/chain/governance"
 	"github.com/govm-net/chain/network"
 	"github.com/govm-net/chain/storage"
 )
@@ -36,8 +37,15 @@ func New(cfg *config.Config) (*Chain, error) {
 		return nil, fmt.Errorf("failed to create storage: %w", err)
 	}
 
+	// 创建治理模块
+	governance, err := governance.NewDPOSGovernance(&cfg.Governance, storage)
+	if err != nil {
+		cancel()
+		return nil, fmt.Errorf("failed to create governance module: %w", err)
+	}
+
 	// 创建执行引擎
-	execution, err := execution.New(cfg.Execution, storage)
+	execution, err := execution.New(&cfg.Execution, storage, governance)
 	if err != nil {
 		cancel()
 		return nil, fmt.Errorf("failed to create execution engine: %w", err)
@@ -51,7 +59,7 @@ func New(cfg *config.Config) (*Chain, error) {
 	}
 
 	// 创建网络层
-	network, err := network.New(cfg.Network, consensus)
+	network, err := network.New(cfg.Network)
 	if err != nil {
 		cancel()
 		return nil, fmt.Errorf("failed to create network layer: %w", err)

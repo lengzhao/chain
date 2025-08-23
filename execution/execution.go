@@ -15,8 +15,8 @@ import (
 
 // Execution 执行引擎
 type Execution struct {
-	config *config.ExecutionConfig
-	storage *storage.Storage
+	config     *config.ExecutionConfig
+	storage    *storage.Storage
 	governance *governance.DPOSGovernance
 
 	ctx    context.Context
@@ -111,7 +111,7 @@ func (e *Execution) executeGovernanceTransaction(tx *types.Transaction) error {
 	}
 
 	// 委托给治理模块处理
-	return e.governance.ProcessTransaction(tx)
+	return e.governance.ProcessGovernanceTransaction(tx)
 }
 
 // executeTransferTransaction 执行转账交易

@@ -9,10 +9,11 @@ import (
 
 // Config 系统配置
 type Config struct {
-	Network   NetworkConfig   `yaml:"network"`
-	Consensus ConsensusConfig `yaml:"consensus"`
-	Storage   StorageConfig   `yaml:"storage"`
-	Execution ExecutionConfig `yaml:"execution"`
+	Network    NetworkConfig    `yaml:"network"`
+	Consensus  ConsensusConfig  `yaml:"consensus"`
+	Storage    StorageConfig    `yaml:"storage"`
+	Execution  ExecutionConfig  `yaml:"execution"`
+	Governance GovernanceConfig `yaml:"governance"`
 }
 
 // NetworkConfig 网络配置
@@ -47,6 +48,12 @@ type ExecutionConfig struct {
 	MaxThreads int `yaml:"max_threads"`
 	BatchSize  int `yaml:"batch_size"`
 	Timeout    int `yaml:"timeout"`
+}
+
+// GovernanceConfig 治理配置
+type GovernanceConfig struct {
+	MinStake     int64 `yaml:"min_stake"`
+	VotingPeriod int   `yaml:"voting_period"`
 }
 
 // Load 加载配置文件
@@ -92,6 +99,10 @@ func DefaultConfig() *Config {
 			MaxThreads: 8,
 			BatchSize:  100,
 			Timeout:    5000,
+		},
+		Governance: GovernanceConfig{
+			MinStake:     1000000,
+			VotingPeriod: 86400,
 		},
 	}
 }

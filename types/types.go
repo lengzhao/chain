@@ -233,3 +233,8 @@ func (tx *Transaction) IsGovernanceTransaction() bool {
 		toAddr == AddressUnvote ||
 		toAddr == AddressUnlock
 }
+
+type ContextKey struct{}
+
+type CtxBlockTime ContextKey
+type CtxTxHash ContextKey
